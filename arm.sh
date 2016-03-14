@@ -13,7 +13,7 @@ if [ ! -d $BASEDIR/toolchain ]; then
 	# To solve timed_mutex
 	# _GTHREAD_USE_MUTEX_TIMEDLOCK=0 -> 1
 	# $TOOLCHAIN/include/c++/4.8/arm-linux-androideabi/ ... / c++config.h
-	patch -p0 -i toolchain.patch
+#	patch -p0 -i toolchain.patch
 fi
 
 
@@ -29,7 +29,7 @@ export EXTRA_LDFLAGS+=" -lstdc++ -lsupc++"
 
 # Some STL functions are not availiable with Android
 # To bypass, define CYGWIN
-export EXTRA_CXXFLAGS+=" -DCYGWIN"
+# export EXTRA_CXXFLAGS+=" -DCYGWIN"
 
 # Set TARGET_OS manually
 export TARGET_OS="OS_ANDROID_CROSSCOMPILE"
