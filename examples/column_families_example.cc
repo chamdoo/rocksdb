@@ -12,7 +12,7 @@
 
 using namespace rocksdb;
 
-std::string kDBPath = "/tmp/rocksdb_column_families_example";
+std::string kDBPath = "/mnt/sdcard/rocksdb_tmp/rocksdb_column_families_example";
 
 int main() {
   // open DB

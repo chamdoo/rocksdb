@@ -11,7 +11,7 @@
 
 using namespace rocksdb;
 
-std::string kDBPath = "/tmp/rocksdb_simple_example";
+std::string kDBPath = "/mnt/sdcard/rocksdb_tmp/rocksdb_simple_example";
 
 int main() {
   DB* db;

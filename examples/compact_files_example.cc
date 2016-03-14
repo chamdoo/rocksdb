@@ -11,9 +11,10 @@
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
 #include "rocksdb/options.h"
+#include "../util/string_util.h"
 
 using namespace rocksdb;
-std::string kDBPath = "/tmp/rocksdb_compact_files_example";
+std::string kDBPath = "/mnt/sdcard/rocksdb_tmp/rocksdb_compact_files_example";
 struct CompactionTask;
 
 // This is an example interface of external-compaction algorithm.
@@ -152,14 +153,14 @@ int main() {
   // if background compaction is not working, write will stall
   // because of options.level0_stop_writes_trigger
   for (int i = 1000; i < 99999; ++i) {
-    db->Put(WriteOptions(), std::to_string(i),
+    db->Put(WriteOptions(), ToString(i),
                             std::string(500, 'a' + (i % 26)));
   }
 
   // verify the values are still there
   std::string value;
   for (int i = 1000; i < 99999; ++i) {
-    db->Get(ReadOptions(), std::to_string(i),
+    db->Get(ReadOptions(), ToString(i),
                            &value);
     assert(value == std::string(500, 'a' + (i % 26)));
   }

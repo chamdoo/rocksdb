@@ -2,6 +2,9 @@ include ../make_config.mk
 
 .PHONY: clean librocksdb
 
+PLATFORM_CXXFLAGS+=${EXTRA_CXXFLAGS}
+EXEC_LDFLAGS+=$(EXTRA_LDFLAGS)
+
 all: simple_example column_families_example compact_files_example c_simple_example optimistic_transaction_example transaction_example
 
 simple_example: librocksdb simple_example.cc

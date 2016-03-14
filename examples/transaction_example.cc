@@ -13,7 +13,7 @@
 
 using namespace rocksdb;
 
-std::string kDBPath = "/tmp/rocksdb_transaction_example";
+std::string kDBPath = "/mnt/sdcard/rocksdb_tmp/rocksdb_transaction_example";
 
 int main() {
   // open DB
