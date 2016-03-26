@@ -6,6 +6,7 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -60,6 +61,11 @@
 #define EXT4_SUPER_MAGIC 0xEF53
 #endif
 
+
+#define NOHOST
+#ifdef NOHOST
+#endif
+
 namespace rocksdb {
 
 namespace {
@@ -107,6 +113,12 @@ static int LockOrUnlock(const std::string& fname, int fd, bool lock) {
     lockedFiles.erase(fname);
   }
   mutex_lockedFiles.Unlock();
+
+
+#ifdef NOHOST
+  /* TODO: lock/unlock support */
+#endif
+
   return value;
 }
 
@@ -142,6 +154,9 @@ class PosixEnv : public Env {
   void SetFD_CLOEXEC(int fd, const EnvOptions* options) {
     if ((options == nullptr || options->set_fd_cloexec) && fd > 0) {
       fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
+#ifdef NOHOST
+	  /* TODO: don't understand */
+#endif
     }
   }
 
@@ -154,6 +169,9 @@ class PosixEnv : public Env {
       IOSTATS_TIMER_GUARD(open_nanos);
       f = fopen(fname.c_str(), "r");
     } while (f == nullptr && errno == EINTR);
+#ifdef NOHOST
+	  /* TODO: open the existing file */
+#endif
     if (f == nullptr) {
       *result = nullptr;
       return IOError(fname, errno);
@@ -197,6 +215,11 @@ class PosixEnv : public Env {
     } else {
       result->reset(new PosixRandomAccessFile(fname, fd, options));
     }
+#ifdef NOHOST
+	  /* TODO: open the existing file with a read-only option 
+	   * It might be a good idea of disabling mmap
+	   * */
+#endif
     return s;
   }
 
@@ -234,6 +257,11 @@ class PosixEnv : public Env {
         result->reset(new PosixWritableFile(fname, fd, no_mmap_writes_options));
       }
     }
+#ifdef NOHOST
+	  /* TODO: create a new file with RW option
+	   * It might be a good idea of disabling mmap
+	   * */
+#endif
     return s;
   }
 
@@ -278,6 +306,11 @@ class PosixEnv : public Env {
         result->reset(new PosixWritableFile(fname, fd, no_mmap_writes_options));
       }
     }
+#ifdef NOHOST
+	  /* TODO: open a file and rename it
+	   * It might be a good idea of disabling mmap
+	   * */
+#endif
     return s;
   }
 
@@ -295,11 +328,18 @@ class PosixEnv : public Env {
       result->reset(new PosixDirectory(fd));
     }
     return Status::OK();
+#ifdef NOHOST
+	/* Do nothing */
+#endif
   }
 
   virtual Status FileExists(const std::string& fname) override {
     int result = access(fname.c_str(), F_OK);
 
+#ifdef NOHOST
+	/* TODO: check the existence of a file */
+#endif
+	  
     if (result == 0) {
       return Status::OK();
     }
@@ -331,6 +371,9 @@ class PosixEnv : public Env {
     }
     closedir(d);
     return Status::OK();
+#ifdef NOHOST
+	/* TODO: return errors -- cannot handle directory */
+#endif
   }
 
   virtual Status DeleteFile(const std::string& fname) override {
@@ -339,6 +382,9 @@ class PosixEnv : public Env {
       result = IOError(fname, errno);
     }
     return result;
+#ifdef NOHOST
+	/* TODO: remove a file */
+#endif
   };
 
   virtual Status CreateDir(const std::string& name) override {
@@ -347,6 +393,9 @@ class PosixEnv : public Env {
       result = IOError(name, errno);
     }
     return result;
+#ifdef NOHOST
+	/* Do Nothing */
+#endif
   };
 
   virtual Status CreateDirIfMissing(const std::string& name) override {
@@ -361,6 +410,9 @@ class PosixEnv : public Env {
       }
     }
     return result;
+#ifdef NOHOST
+	/* Do Nothing */
+#endif
   };
 
   virtual Status DeleteDir(const std::string& name) override {
@@ -369,6 +421,9 @@ class PosixEnv : public Env {
       result = IOError(name, errno);
     }
     return result;
+#ifdef NOHOST
+	/* Do Nothing */
+#endif
   };
 
   virtual Status GetFileSize(const std::string& fname,
@@ -382,6 +437,9 @@ class PosixEnv : public Env {
       *size = sbuf.st_size;
     }
     return s;
+#ifdef NOHOST
+	/* TODO: Return the size of a file in byte */
+#endif
   }
 
   virtual Status GetFileModificationTime(const std::string& fname,
@@ -392,6 +450,9 @@ class PosixEnv : public Env {
     }
     *file_mtime = static_cast<uint64_t>(s.st_mtime);
     return Status::OK();
+#ifdef NOHOST
+	/* TODO: Return the modification time */
+#endif
   }
   virtual Status RenameFile(const std::string& src,
                             const std::string& target) override {
@@ -400,6 +461,9 @@ class PosixEnv : public Env {
       result = IOError(src, errno);
     }
     return result;
+#ifdef NOHOST
+	/* TODO: Rename a file */
+#endif
   }
 
   virtual Status LinkFile(const std::string& src,
@@ -412,6 +476,9 @@ class PosixEnv : public Env {
       result = IOError(src, errno);
     }
     return result;
+#ifdef NOHOST
+	/* TODO: Make a link */
+#endif
   }
 
   virtual Status LockFile(const std::string& fname, FileLock** lock) override {
@@ -434,6 +501,9 @@ class PosixEnv : public Env {
       my_lock->filename = fname;
       *lock = my_lock;
     }
+#ifdef NOHOST
+	/* TODO: open a file and lock it */
+#endif
     return result;
   }
 
@@ -445,6 +515,9 @@ class PosixEnv : public Env {
     }
     close(my_lock->fd_);
     delete my_lock;
+#ifdef NOHOST
+	/* TODO: open a file and lock it */
+#endif
     return result;
   }
 
@@ -471,6 +544,9 @@ class PosixEnv : public Env {
     // Directory may already exist
     CreateDir(*result);
     return Status::OK();
+#ifdef NOHOST
+	/* Do Nothing */
+#endif
   }
 
   virtual Status GetThreadList(
@@ -513,6 +589,9 @@ class PosixEnv : public Env {
       result->reset(new PosixLogger(f, &PosixEnv::gettid, this));
       return Status::OK();
     }
+#ifdef NOHOST
+	/* Do Nothing */
+#endif
   }
 
   virtual uint64_t NowMicros() override {

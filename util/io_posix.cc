@@ -9,6 +9,8 @@
 
 #ifdef ROCKSDB_LIB_IO_POSIX
 
+#include <iostream>
+using namespace std;
 #include "util/io_posix.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -82,6 +84,9 @@ Status PosixSequentialFile::Read(size_t n, Slice* result, char* scratch) {
     Fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED);  // free OS pages
   }
   return s;
+#ifdef NOHOST
+	/* TODO: read data and change the offset */
+#endif
 }
 
 Status PosixSequentialFile::Skip(uint64_t n) {
@@ -89,6 +94,9 @@ Status PosixSequentialFile::Skip(uint64_t n) {
     return IOError(filename_, errno);
   }
   return Status::OK();
+#ifdef NOHOST
+	/* Do Nothing */
+#endif
 }
 
 Status PosixSequentialFile::InvalidateCache(size_t offset, size_t length) {
@@ -101,6 +109,9 @@ Status PosixSequentialFile::InvalidateCache(size_t offset, size_t length) {
     return Status::OK();
   }
   return IOError(filename_, errno);
+#endif
+#ifdef NOHOST
+	/* Do Nothing */
 #endif
 }
 
@@ -130,6 +141,9 @@ static size_t GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
   rid = EncodeVarint64(rid, uversion);
   assert(rid >= id);
   return static_cast<size_t>(rid - id);
+#ifdef NOHOST
+	/* Get a random number */
+#endif
 }
 }
 #endif
@@ -178,6 +192,9 @@ Status PosixRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
     Fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED);  // free OS pages
   }
   return s;
+#ifdef NOHOST
+	/* Get a random number */
+#endif
 }
 
 #ifdef OS_LINUX
@@ -207,6 +224,9 @@ void PosixRandomAccessFile::Hint(AccessPattern pattern) {
       assert(false);
       break;
   }
+#ifdef NOHOST
+	/* Do Nothing -- Ignore */
+#endif
 }
 
 Status PosixRandomAccessFile::InvalidateCache(size_t offset, size_t length) {
