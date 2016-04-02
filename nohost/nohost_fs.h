@@ -13,10 +13,12 @@ namespace rocksdb{
 
 struct OpenFileEntry{
 	Node* node;
-	unsigned int offset;
-	OpenFileEntry(Node* node, unsigned int offset){
+	unsigned int r_offset;
+	unsigned int w_offset;
+	OpenFileEntry(Node* node, unsigned int r_offset, unsigned int w_offset){
 		this->node =node;
-		this->offset =offset;
+		this->r_offset =r_offset;
+		this->w_offset =w_offset;
 	}
 };
 
@@ -44,12 +46,14 @@ public:
 			delete open_file_table->at(i);
 		}
 		close(flash_fd);
-	    unlink("flash.db");
+		//unlink("flash.db");
 	}
 	unsigned int GetFreeBlockAddress();
 	int Open(std::string name, char type);
-	int Write(int fd, char* buf, unsigned int size);
-	int Read(int fd, char* buf, unsigned int size);
+	unsigned int Write(int fd, char* buf, unsigned int size);
+	unsigned int Read(int fd, char* buf, unsigned int size);
+	unsigned int ReadHelper(int fd, char* buf, unsigned int size);
+	unsigned int SequentialRead(int fd, char* buf, unsigned int size);
 
 
 
