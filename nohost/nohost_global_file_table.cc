@@ -7,10 +7,10 @@
 namespace rocksdb{
 
 // Node implementation
-unsigned int Node::GetSize(){
+uint64_t Node::GetSize(){
 	if(isfile){
 		int total = 0;
-		for(unsigned int i = 0; i < file_info->size(); i++){
+		for(uint64_t i = 0; i < file_info->size(); i++){
 			total += (file_info->at(i)->size);
 		}
 		return total;

@@ -2,12 +2,29 @@
 #include <string.h>
 
 namespace rocksdb{
+int NoHostFs::Close(int fd) {return 0;}
+int NoHostFs::Rename(std::string old_name, std::string name) {return 0;}
+int NoHostFs::Access(std::string name) {return 0;}
+Node* NoHostFs::ReadDir(int fd) {return 0;}
+int NoHostFs::DeleteFile(std::string name) {return 0;}
+int NoHostFs::DeleteDir(std::string name) {return 0;}
+int NoHostFs::CreateDir(std::string name) {return 0;}
+bool NoHostFs::DirExists(std::string name) {return 0;}
+int NoHostFs::GetFileSize(std::string name) {return 0;}
+int NoHostFs::GetFileModificationTime(std::string name) {return 0;}
+bool NoHostFs::Link(std::string src, std::string target) {return 0;}
+bool NoHostFs::IsEof(int fd) {return 0;}
+int NoHostFs::Lseek(int fd, uint64_t n) {return 0;}
+
+
 
 int NoHostFs::Open(std::string name, char type){
-	Node* ret;
-	unsigned int start_address;
+	Node* ret = NULL;
+	uint64_t start_address;
 
 	switch(type){
+	case 'd' :
+		break;
 	case 'r' :
 		ret = global_file_tree->GetNode(name);
 		break;
@@ -26,15 +43,49 @@ int NoHostFs::Open(std::string name, char type){
 	return open_file_table->size() - 1;
 }
 
-unsigned int NoHostFs::Write(int fd, char* buf, unsigned int size){
+int NoHostFs::Write(int fd, const char* buf, uint64_t size){
+	OpenFileEntry* entry = open_file_table->at(fd);
+	FileSegInfo* finfo = NULL;
+	int wsize = 0;
+
+	uint64_t start_page = entry->w_offset / page_size;
+	uint64_t last_page = (entry->w_offset + size - 1) / page_size;
+	uint64_t offset = entry->w_offset % page_size;
+
+
+	while(entry->node->file_info->size() - 1 < last_page){
+		entry->node->file_info->push_back(new FileSegInfo(GetFreeBlockAddress(), 0));
+	}
+
+	finfo = entry->node->file_info->at(start_page);
+	wsize = lseek(flash_fd, (finfo->start_address +offset), SEEK_SET);
+	if(wsize < 0){ std::cout << "lseek error\n"; return wsize; }
+
+	if(page_size - offset < size){
+		wsize = write(flash_fd, buf, page_size - offset);
+		if(wsize < 0){ std::cout << "write error\n"; return wsize; }
+		finfo->size += wsize;
+		entry->w_offset += wsize;
+	}
+	else{
+		wsize = write(flash_fd, buf, size);
+		if(wsize < 0){ std::cout << "write error\n"; return wsize; }
+		finfo->size += wsize;
+		entry->w_offset += wsize;
+	}
+
+	return wsize;
+}
+
+int NoHostFs::Write(int fd, char* buf, uint64_t size){
 	OpenFileEntry* entry = open_file_table->at(fd);
 	FileSegInfo* finfo = NULL;
 	char* curbuf = buf;
 	int wsize = 0;
 
-	unsigned int start_page = entry->w_offset / page_size;
-	unsigned int last_page = (entry->w_offset + size - 1) / page_size;
-	unsigned int offset = entry->w_offset % page_size;
+	uint64_t start_page = entry->w_offset / page_size;
+	uint64_t last_page = (entry->w_offset + size - 1) / page_size;
+	uint64_t offset = entry->w_offset % page_size;
 
 
 	while(entry->node->file_info->size() - 1 < last_page){
@@ -61,29 +112,31 @@ unsigned int NoHostFs::Write(int fd, char* buf, unsigned int size){
 	return wsize;
 }
 
-unsigned int NoHostFs::SequentialRead(int fd, char* buf, unsigned int size){
+int NoHostFs::SequentialRead(int fd, char* buf, uint64_t size){
 	std::string data = "";
 	char* tmp = new char[page_size];
 	int left = size;
 	int done = 0;
+	int sum = 0;
 	while (left != 0) {
 		done = ReadHelper(fd, tmp, left);
 		if (done < 0) return false;
 		if(tmp != NULL) data += tmp;
 		left -= done;
+		sum += done;
 	}
 	strcpy(buf, data.data());
-	return done;
+	return sum;
 }
 
-unsigned int NoHostFs::ReadHelper(int fd, char* buf, unsigned int size){
+int NoHostFs::ReadHelper(int fd, char* buf, uint64_t size){
 	OpenFileEntry* entry = open_file_table->at(fd);
 	FileSegInfo* finfo = NULL;
 	int rsize = 0;
 
-	unsigned int start_page = entry->r_offset / page_size;
-	unsigned int last_page = (entry->r_offset + size - 1) / page_size;
-	unsigned int offset = entry->r_offset % page_size;
+	uint64_t start_page = entry->r_offset / page_size;
+	uint64_t last_page = (entry->r_offset + size - 1) / page_size;
+	uint64_t offset = entry->r_offset % page_size;
 
 	if(entry->node->file_info->size() - 1 < last_page){
 		std::cout << "file data doesn't exist\n";
@@ -107,14 +160,14 @@ unsigned int NoHostFs::ReadHelper(int fd, char* buf, unsigned int size){
 
 }
 
-unsigned int NoHostFs::Read(int fd, char* buf, unsigned int size){
+int NoHostFs::Read(int fd, char* buf, uint64_t size){
 	OpenFileEntry* entry = open_file_table->at(fd);
 	FileSegInfo* finfo = NULL;
 	int rsize = 0;
 
-	unsigned int start_page = entry->r_offset / page_size;
-	unsigned int last_page = (entry->r_offset + size - 1) / page_size;
-	unsigned int offset = entry->r_offset % page_size;
+	uint64_t start_page = entry->r_offset / page_size;
+	uint64_t last_page = (entry->r_offset + size - 1) / page_size;
+	uint64_t offset = entry->r_offset % page_size;
 
 
 	if(entry->node->file_info->size() - 1 < last_page){
@@ -139,8 +192,8 @@ unsigned int NoHostFs::Read(int fd, char* buf, unsigned int size){
 	return rsize;
 }
 
-unsigned int NoHostFs::GetFreeBlockAddress(){
-	unsigned int i;
+uint64_t NoHostFs::GetFreeBlockAddress(){
+	uint64_t i;
 
 	for(i = 0; i < free_page_bitmap->size(); i++)
 		if(free_page_bitmap->at(i) == 0) break;

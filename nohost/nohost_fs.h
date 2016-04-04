@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include "nohost_global_file_table.h"
 
@@ -13,12 +14,12 @@ namespace rocksdb{
 
 struct OpenFileEntry{
 	Node* node;
-	unsigned int r_offset;
-	unsigned int w_offset;
-	OpenFileEntry(Node* node, unsigned int r_offset, unsigned int w_offset){
-		this->node =node;
-		this->r_offset =r_offset;
-		this->w_offset =w_offset;
+	uint64_t r_offset;
+	uint64_t w_offset;
+	OpenFileEntry(Node* node_, uint64_t r_offset_, uint64_t w_offset_){
+		this->node =node_;
+		this->r_offset =r_offset_;
+		this->w_offset =w_offset_;
 	}
 };
 
@@ -31,7 +32,7 @@ private:
 
 public:
 	GlobalFileTableTree* global_file_tree; // it must be private!!!!
-	NoHostFs(unsigned int assign_size){
+	NoHostFs(uint64_t assign_size){
 		global_file_tree = new GlobalFileTableTree();
 		open_file_table = new std::vector<OpenFileEntry*>();
 		free_page_bitmap = new std::vector<unsigned char>();
@@ -42,21 +43,34 @@ public:
 	}
 	~NoHostFs(){
 		delete global_file_tree;
-		for(unsigned int i =0; i < open_file_table->size(); i++){
+		for(uint64_t i =0; i < open_file_table->size(); i++){
 			delete open_file_table->at(i);
 		}
 		close(flash_fd);
 		//unlink("flash.db");
 	}
-	unsigned int GetFreeBlockAddress();
+	uint64_t GetFreeBlockAddress();
 	int Open(std::string name, char type);
-	unsigned int Write(int fd, char* buf, unsigned int size);
-	unsigned int Read(int fd, char* buf, unsigned int size);
-	unsigned int ReadHelper(int fd, char* buf, unsigned int size);
-	unsigned int SequentialRead(int fd, char* buf, unsigned int size);
+	int Write(int fd, const char* buf, size_t size);
+	int Write(int fd, char* buf, size_t size);
+	int Read(int fd, char* buf, size_t size);
+	int ReadHelper(int fd, char* buf, size_t size);
+	int SequentialRead(int fd, char* buf, size_t size);
 
 
-
+	int Close(int fd);
+	int Rename(std::string old_name, std::string name);
+	int Access(std::string name);
+	Node* ReadDir(int fd);
+	int DeleteFile(std::string name);
+	int DeleteDir(std::string name);
+	int CreateDir(std::string name);
+	bool DirExists(std::string name);
+	int GetFileSize(std::string name);
+	int GetFileModificationTime(std::string name);
+	bool Link(std::string src, std::string target);
+	bool IsEof(int dfd);
+	int Lseek(int fd, uint64_t n);
 
 };
 

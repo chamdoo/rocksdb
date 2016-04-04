@@ -2,26 +2,27 @@
 #include <list>
 #include <string>
 #include <vector>
+#include <stdint.h>
 
 namespace rocksdb{
 
 struct FileSegInfo{
-	unsigned int start_address;
-	unsigned int size;
-	FileSegInfo(unsigned int start_address, unsigned int size){
-		this->start_address =start_address;
-		this->size =size;
+	uint64_t start_address;
+	uint64_t size;
+	FileSegInfo(uint64_t start_address_, uint64_t size_){
+		this->start_address =start_address_;
+		this->size =size_;
 	}
 };
 
 class Node{
 public:
-	Node(std::string name, bool isfile, Node* parent) :
+	Node(std::string name_, bool isfile_, Node* parent_) :
 		children(NULL), file_info(NULL){
-		this->name =name;
-		this->isfile = isfile;
-		this->parent = parent;
-		if(isfile) file_info = new std::vector<FileSegInfo*>();
+		this->name =name_;
+		this->isfile = isfile_;
+		this->parent = parent_;
+		if(isfile_) file_info = new std::vector<FileSegInfo*>();
 		else children = new std::list<Node*>();
 	}
 	~Node(){
@@ -33,7 +34,7 @@ public:
 	bool isfile;
 	std::list<Node*>* children;
 	std::vector<FileSegInfo*>* file_info;
-	unsigned int GetSize();
+	uint64_t GetSize();
 };
 
 class GlobalFileTableTree{

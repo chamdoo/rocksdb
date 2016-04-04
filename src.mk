@@ -161,7 +161,8 @@ LIB_SOURCES =                                                   \
   util/vectorrep.cc                                             \
   util/xfunc.cc                                                 \
   util/xxhash.cc                                                \
-  #nohost/nohost_fs.cc											\
+  nohost/nohost_fs.cc											\
+  nohost/nohost_global_file_table.cc											\
 
 TOOL_SOURCES = \
   tools/ldb_cmd.cc                                               \
