@@ -230,8 +230,8 @@ VALGRIND_VER := $(join $(VALGRIND_VER),valgrind)
 VALGRIND_OPTS = --error-exitcode=$(VALGRIND_ERROR) --leak-check=full
 
 TESTS = \
-	db_test \
-	db_iter_test \
+	db_test #\
+#	db_iter_test \
 	db_log_iter_test \
 	db_compaction_filter_test \
 	db_compaction_test \
@@ -326,7 +326,7 @@ TESTS = \
 SUBSET :=  $(shell echo $(TESTS) |sed s/^.*$(ROCKSDBTESTS_START)/$(ROCKSDBTESTS_START)/)
 
 TOOLS = \
-	sst_dump \
+#	sst_dump \
 	db_sanity_test \
 	db_stress \
 	write_stress \
@@ -335,7 +335,7 @@ TOOLS = \
 	rocksdb_dump \
 	rocksdb_undump
 
-BENCHMARKS = db_bench table_reader_bench cache_bench memtablerep_bench
+BENCHMARKS =# db_bench table_reader_bench cache_bench memtablerep_bench
 
 # if user didn't config LIBNAME, set the default
 ifeq ($(LIBNAME),)

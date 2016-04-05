@@ -3,8 +3,15 @@
 #include <string>
 #include <vector>
 #include <stdint.h>
+#include <time.h>
+#include <sys/time.h>
+#include <errno.h>
 
 namespace rocksdb{
+
+std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
+std::vector<std::string> split(const std::string &s, char delim);
+uint64_t GetCurrentTime();
 
 struct FileSegInfo{
 	uint64_t start_address;
@@ -24,6 +31,9 @@ public:
 		this->parent = parent_;
 		if(isfile_) file_info = new std::vector<FileSegInfo*>();
 		else children = new std::list<Node*>();
+		last_modified_time = GetCurrentTime();
+		link_count = 1;
+		lock = false;
 	}
 	~Node(){
 		if(isfile) delete file_info;
@@ -32,26 +42,60 @@ public:
 	Node* parent;
 	std::string name;
 	bool isfile;
+	uint64_t last_modified_time;
 	std::list<Node*>* children;
 	std::vector<FileSegInfo*>* file_info;
+	int link_count;
 	uint64_t GetSize();
+	static uint64_t page_size;
+	static std::vector<unsigned char>* free_page_bitmap;
+	bool lock;
 };
 
 class GlobalFileTableTree{
 public:
-	GlobalFileTableTree() : cwd(NULL){
+	std::vector<unsigned char>* free_page_bitmap; // until now, it associates a char with a page
+
+	GlobalFileTableTree(uint64_t page_size_){
+		free_page_bitmap = new std::vector<unsigned char>();
+		free_page_bitmap->push_back(0);
 		root = new Node("", false, NULL);
+		page_size = page_size_;
+		CreateDir("tmp");
+		CreateDir("usr");
+		CreateDir("var");
+		CreateDir("sbin");
+		CreateDir("srv");
+		CreateDir("sys");
+		CreateDir("proc");
+		CreateDir("root");
+		CreateDir("run");
+		CreateDir("media");
+		CreateDir("mnt");
+		CreateDir("opt");
+		CreateDir("lib32");
+		CreateDir("lib64");
+		CreateDir("dev");
+		CreateDir("etc");
+		CreateDir("home");
+		CreateDir("cdrom");
+		CreateDir("boot");
+		CreateDir("bin");
 	}
 	~GlobalFileTableTree(){
+		delete free_page_bitmap;
 		RecursiveRemoveDir(root);
 	}
 
-	bool CreateDir(std::string name);
-	bool CreateFile(std::string name);
+	Node* CreateDir(std::string name);
+	Node* CreateFile(std::string name);
+	Node* Link(std::string src, std::string target);
 	bool DeleteDir(std::string name);
 	bool DeleteFile(std::string name);
+	int Lock(std::string name, bool lock);
 
 	Node* GetNode(std::string name);
+	int FreeAllocatedPage(Node* node);
 	// go to the target directory. and return the target directory node.
 	Node* DirectoryTraverse(const std::string path, bool isCreate);
 	Node* FindChild(Node* dir, std::string name);
@@ -61,13 +105,9 @@ public:
 	void printAll();
 private:
 	Node* root;
-	// before you start all methods, you must set cwd using DicrectoryTraverse().
-	Node* cwd;
+	uint64_t page_size;
 
 
 };
-
-std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
-std::vector<std::string> split(const std::string &s, char delim);
 
 } // namespace rocksdb

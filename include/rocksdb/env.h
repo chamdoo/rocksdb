@@ -60,19 +60,19 @@ struct EnvOptions {
   explicit EnvOptions(const DBOptions& options);
 
   // If true, then allow caching of data in environment buffers
-  bool use_os_buffer = true;
+  bool use_os_buffer = false;
 
    // If true, then use mmap to read data
   bool use_mmap_reads = false;
 
    // If true, then use mmap to write data
-  bool use_mmap_writes = true;
+  bool use_mmap_writes = false;
 
   // If false, fallocate() calls are bypassed
   bool allow_fallocate = true;
 
   // If true, set the FD_CLOEXEC on open fd.
-  bool set_fd_cloexec = true;
+  bool set_fd_cloexec = false;
 
   // Allows OS to incrementally sync files to disk while they are being
   // written, in the background. Issue one request for every bytes_per_sync

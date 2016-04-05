@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <errno.h>
 
 #include "nohost_global_file_table.h"
 
@@ -26,18 +27,16 @@ struct OpenFileEntry{
 class NoHostFs{
 private:
 	std::vector<OpenFileEntry*>* open_file_table;
-	std::vector<unsigned char>* free_page_bitmap; // until now, it associates a char with a page
 	int flash_fd;
 	int page_size;
 
 public:
 	GlobalFileTableTree* global_file_tree; // it must be private!!!!
+
 	NoHostFs(uint64_t assign_size){
-		global_file_tree = new GlobalFileTableTree();
+		global_file_tree = new GlobalFileTableTree(assign_size);
+
 		open_file_table = new std::vector<OpenFileEntry*>();
-		free_page_bitmap = new std::vector<unsigned char>();
-		free_page_bitmap->push_back(0);
-		std::cout << free_page_bitmap->size() << std::endl;
 		flash_fd = open("flash.db", O_CREAT | O_RDWR | O_TRUNC, 0666);
 		this->page_size = assign_size;
 	}
@@ -64,13 +63,16 @@ public:
 	Node* ReadDir(int fd);
 	int DeleteFile(std::string name);
 	int DeleteDir(std::string name);
+	int CreateFile(std::string name);
 	int CreateDir(std::string name);
 	bool DirExists(std::string name);
 	int GetFileSize(std::string name);
-	int GetFileModificationTime(std::string name);
+	uint64_t GetFileModificationTime(std::string name);
 	bool Link(std::string src, std::string target);
 	bool IsEof(int dfd);
 	int Lseek(int fd, uint64_t n);
+	int Free(Node* node);
+	int Lock(std::string name, bool lock);
 
 };
 

@@ -78,7 +78,7 @@ ThreadStatusUpdater* CreateThreadStatusUpdater() {
 static std::set<std::string> lockedFiles;
 static port::Mutex mutex_lockedFiles;
 
-static int LockOrUnlock(const std::string& fname, int fd, bool lock) {
+static int LockOrUnlock(const std::string& fname, int fd, bool lock, NoHostFs* nohost) {
   mutex_lockedFiles.Lock();
   if (lock) {
     // If it already exists in the lockedFiles set, then it is already locked,
@@ -101,13 +101,16 @@ static int LockOrUnlock(const std::string& fname, int fd, bool lock) {
     }
   }
   errno = 0;
-  struct flock f;
+  int value = nohost->Lock(fname, lock);
+
+/*  struct flock f;
   memset(&f, 0, sizeof(f));
   f.l_type = (lock ? F_WRLCK : F_UNLCK);
   f.l_whence = SEEK_SET;
   f.l_start = 0;
   f.l_len = 0;        // Lock/unlock entire file
-  int value = fcntl(fd, F_SETLK, &f);
+  int value = fcntl(fd, F_SETLK, &f);*/
+
   if (value == -1 && lock) {
     // if there is an error in locking, then remove the pathname from lockedfiles
     lockedFiles.erase(fname);
@@ -137,7 +140,6 @@ class PosixFileLock : public FileLock {
 
 class PosixEnv : public Env {
  public:
-	NoHostFs* nohost;
   PosixEnv();
 
   virtual ~PosixEnv() {
@@ -164,12 +166,10 @@ class PosixEnv : public Env {
   virtual Status NewSequentialFile(const std::string& fname,
                                    unique_ptr<SequentialFile>* result,
                                    const EnvOptions& options) override {
+		printf("Enter the NewSequentialFile(string %s)\n", fname.c_str());
     result->reset();
     int fd = -1;
-    do {
-      IOSTATS_TIMER_GUARD(open_nanos);
-      fd = nohost->Open(fname.c_str(), 'r');
-    } while (fd == -1 && errno == EINTR);
+    fd = nohost->Open(fname.c_str(), 'r');
 
     if (fd == -1) {
       *result = nullptr;
@@ -184,66 +184,57 @@ class PosixEnv : public Env {
   virtual Status NewRandomAccessFile(const std::string& fname,
                                      unique_ptr<RandomAccessFile>* result,
                                      const EnvOptions& options) override {
+	printf("Enter the NewRandomAccessFile(string %s)\n", fname.c_str());
     result->reset();
-    Status s;
     int fd = -1;
-    {
-      IOSTATS_TIMER_GUARD(open_nanos);
-      fd = nohost->Open(fname.c_str(), 'r');
-    }
+	fd = nohost->Open(fname.c_str(), 'r');
     SetFD_CLOEXEC(fd, &options);
     if (fd < 0) {
-      s = IOError(fname, errno);
+    	return IOError(fname, errno);
     }else {
       result->reset(new PosixRandomAccessFile(fname, fd, options, nohost));
+      return Status::OK();
     }
-    return s;
   }
 
   virtual Status NewWritableFile(const std::string& fname,
                                  unique_ptr<WritableFile>* result,
                                  const EnvOptions& options) override {
+		printf("Enter the NewWritableFile(string %s)\n", fname.c_str());
     result->reset();
-    Status s;
     int fd = -1;
-    do {
-      IOSTATS_TIMER_GUARD(open_nanos);
-      fd = nohost->Open(fname.c_str(), 'w');
-    } while (fd < 0 && errno == EINTR);
+
+    fd = nohost->Open(fname.c_str(), 'w');
+
     if (fd < 0) {
-      s = IOError(fname, errno);
+      return IOError(fname, errno);
     } else {
       SetFD_CLOEXEC(fd, &options);
-	// disable mmap writes
-
       checkedDiskForMmap_ = false;
       forceMmapOff = false;
-
 	  EnvOptions no_mmap_writes_options = options;
 	  no_mmap_writes_options.use_mmap_writes = false;
-
 	  result->reset(new PosixWritableFile(fname, fd, no_mmap_writes_options, nohost));
+	  return Status::OK();
     }
-    return s;
   }
 
   virtual Status ReuseWritableFile(const std::string& fname,
                                    const std::string& old_fname,
                                    unique_ptr<WritableFile>* result,
                                    const EnvOptions& options) override {
+		printf("Enter the ReuseWritableFile(string %s)\n", fname.c_str());
     result->reset();
     Status s;
     int fd = -1;
-    do {
-      IOSTATS_TIMER_GUARD(open_nanos);
-      fd = nohost->Open(old_fname.c_str(), 'w');
-    } while (fd < 0 && errno == EINTR);
+    fd = nohost->Open(old_fname.c_str(), 'w');
     if (fd < 0) {
       s = IOError(fname, errno);
-    } else {
+    }
+    else {
       SetFD_CLOEXEC(fd, &options);
       // rename into place
-      if (nohost->Rename(old_fname.c_str(), fname.c_str()) != 0) {
+      if (nohost->Rename(old_fname.c_str(), fname.c_str()) != 1) {
         Status r = IOError(old_fname, errno);
         nohost->Close(fd);
         return r;
@@ -257,49 +248,32 @@ class PosixEnv : public Env {
 
   virtual Status NewDirectory(const std::string& name,
                               unique_ptr<Directory>* result) override {
+		printf("Enter the NewDirectory(string %s)\n", name.c_str());
     result->reset();
-    int fd;
-    {
-      IOSTATS_TIMER_GUARD(open_nanos);
-      fd = nohost->Open(name.c_str(), 'd');
-    }
+    int fd = -1;
+    fd = nohost->Open(name.c_str(), 'd');
+
     if (fd < 0) {
       return IOError(name, errno);
     } else {
       result->reset(new PosixDirectory(fd, nohost));
+      return Status::OK();
     }
-    return Status::OK();
   }
 
   virtual Status FileExists(const std::string& fname) override {
+		printf("Enter the FileExists(string %s)\n", fname.c_str());
+
     int result = nohost->Access(fname.c_str());
 
-#ifdef NOHOST
-	/* TODO: check the existence of a file */
-#endif
-	  
-    if (result == 0) {
-    	return Status::OK();
-    }
-    else
-    	return Status::NotFound();
+    if (result == 1) return Status::OK();
+    else return Status::NotFound();
 
-    /*switch (errno) {
-      case EACCES:
-      case ELOOP:
-      case ENAMETOOLONG:
-      case ENOENT:
-      case ENOTDIR:
-        return Status::NotFound();
-      default:
-        assert(result == EIO || result == ENOMEM);
-        return Status::IOError("Unexpected error(" + ToString(result) +
-                               ") accessing file `" + fname + "' ");
-    }*/
   }
 
   virtual Status GetChildren(const std::string& dir,
                              std::vector<std::string>* result) override {
+		printf("Enter the GetChildren(string %s)\n", dir.c_str());
     result->clear();
     int d = -1;
     d = nohost->Open(dir.c_str(), 'd');
@@ -307,32 +281,41 @@ class PosixEnv : public Env {
       return IOError(dir, errno);
     }
     Node* entry;
-    while ((entry = nohost->ReadDir(d)) != nullptr) {
-      result->push_back(entry->name);
+    int i = 0;
+    while ((entry = nohost->ReadDir(d)) != NULL) {
+    //	nohost->global_file_tree->printAll();
+      result->push_back(entry->name.c_str());
+      i++;
     }
     nohost->Close(d);
     return Status::OK();
   }
 
   virtual Status DeleteFile(const std::string& fname) override {
+		printf("Enter the DeleteFile(string %s)\n", fname.c_str());
     Status result;
-    if (nohost->DeleteFile(fname) != true) {
+    if (nohost->DeleteFile(fname) != 1) {
       result = IOError(fname, errno);
     }
     return result;
   };
 
   virtual Status CreateDir(const std::string& name) override {
+		printf("Enter the CreateDir(string %s)\n", name.c_str());
     Status result;
-    if (nohost->CreateDir(name) != true) {
+    if (nohost->CreateDir(name) != 1) {
+		printf("	Fail\n");
       result = IOError(name, errno);
     }
+	printf("	Success\n");
+	//nohost->global_file_tree->printAll();
     return result;
   };
 
   virtual Status CreateDirIfMissing(const std::string& name) override {
+		printf("Enter the CreateDirIfMissing(string %s)\n", name.c_str());
     Status result;
-    if (nohost->CreateDir(name) != true) {
+    if (nohost->CreateDir(name) != 1) {
       if (errno != EEXIST) {
         result = IOError(name, errno);
       } else if (nohost->DirExists(name)) {
@@ -345,8 +328,9 @@ class PosixEnv : public Env {
   };
 
   virtual Status DeleteDir(const std::string& name) override {
+		printf("Enter the DeleteDir(string %s)\n", name.c_str());
     Status result;
-    if (nohost->DeleteDir(name) != false) {
+    if (nohost->DeleteDir(name) != 1) {
       result = IOError(name, errno);
     }
     return result;
@@ -354,6 +338,7 @@ class PosixEnv : public Env {
 
   virtual Status GetFileSize(const std::string& fname,
                              uint64_t* size) override {
+		printf("Enter the GetFileSize(string %s)\n", fname.c_str());
     Status s;
     *size = nohost->GetFileSize(fname);
 
@@ -362,8 +347,9 @@ class PosixEnv : public Env {
 
   virtual Status GetFileModificationTime(const std::string& fname,
                                          uint64_t* file_mtime) override {
-    uint64_t mtime = -1;
-    if ((mtime = nohost->GetFileModificationTime(fname)) == 0) {
+		printf("Enter the GetFileModificationTime(string %s)\n", fname.c_str());
+    uint64_t mtime = 0;
+    if ((mtime = nohost->GetFileModificationTime(fname)) != 1) {
       return IOError(fname, errno);
     }
     *file_mtime = mtime;
@@ -372,8 +358,9 @@ class PosixEnv : public Env {
 
   virtual Status RenameFile(const std::string& src,
                             const std::string& target) override {
+		printf("Enter the RenameFile(string %s, string %s)\n", src.c_str(), target.c_str());
     Status result;
-    if (nohost->Rename(src.c_str(), target.c_str()) != false) {
+    if (nohost->Rename(src.c_str(), target.c_str()) != 1) {
       result = IOError(src, errno);
     }
     return result;
@@ -381,29 +368,29 @@ class PosixEnv : public Env {
 
   virtual Status LinkFile(const std::string& src,
                           const std::string& target) override {
-    Status result;
+		printf("Enter the LinkFile(string %s)\n", src.c_str());
+	  /* Status result;
     if (nohost->Link(src.c_str(), target.c_str()) != false)
-      result = IOError(src, errno);
+      result = IOError(src, errno);*/
 
-    return result;
+    return IOError(src, errno);
 
   }
 
   virtual Status LockFile(const std::string& fname, FileLock** lock) override {
+		printf("Enter the LockFile(string %s)\n", fname.c_str());
     *lock = nullptr;
     Status result;
     int fd;
-    {
-      IOSTATS_TIMER_GUARD(open_nanos);
-      fd = nohost->Open(fname.c_str(), 'w');
-    }
+    fd = nohost->Open(fname.c_str(), 'w');
+
     if (fd < 0) {
       result = IOError(fname, errno);
-    } else if (LockOrUnlock(fname, fd, true) == -1) {
+    } else if (LockOrUnlock(fname, fd, true, nohost) == -1) {
       result = IOError("lock " + fname, errno);
-      close(fd);
+      nohost->Close(fd);
     } else {
-      SetFD_CLOEXEC(fd, nullptr);
+      //SetFD_CLOEXEC(fd, nullptr);
       PosixFileLock* my_lock = new PosixFileLock;
       my_lock->fd_ = fd;
       my_lock->filename = fname;
@@ -416,13 +403,16 @@ class PosixEnv : public Env {
   }
 
   virtual Status UnlockFile(FileLock* lock) override {
+	printf("Enter the UnlockFile\n");
     PosixFileLock* my_lock = reinterpret_cast<PosixFileLock*>(lock);
     Status result;
-    if (LockOrUnlock(my_lock->filename, my_lock->fd_, false) == -1) {
+    if (LockOrUnlock(my_lock->filename, my_lock->fd_, false, nohost) == -1) {
       result = IOError("unlock", errno);
     }
-    close(my_lock->fd_);
+    nohost->Close(my_lock->fd_);
     delete my_lock;
+
+
 #ifdef NOHOST
 	/* TODO: open a file and lock it */
 #endif
@@ -441,6 +431,7 @@ class PosixEnv : public Env {
   virtual unsigned int GetThreadPoolQueueLen(Priority pri = LOW) const override;
 
   virtual Status GetTestDirectory(std::string* result) override {
+		printf("Enter the GetTestDirectory(string %s)\n", result->c_str());
     const char* env = getenv("TEST_TMPDIR");
     if (env && env[0] != '\0') {
       *result = env;
@@ -450,11 +441,9 @@ class PosixEnv : public Env {
       *result = buf;
     }
     // Directory may already exist
+    //printf("CreateDir( %s );\n", result->c_str());
     CreateDir(*result);
     return Status::OK();
-#ifdef NOHOST
-	/* Do Nothing */
-#endif
   }
 
   virtual Status GetThreadList(
@@ -480,6 +469,7 @@ class PosixEnv : public Env {
 
   virtual Status NewLogger(const std::string& fname,
                            shared_ptr<Logger>* result) override {
+		printf("Enter the GetTestDirectory(string %s)\n", fname.c_str());
     FILE* f;
     {
       IOSTATS_TIMER_GUARD(open_nanos);
@@ -497,9 +487,7 @@ class PosixEnv : public Env {
       result->reset(new PosixLogger(f, &PosixEnv::gettid, this));
       return Status::OK();
     }
-#ifdef NOHOST
-	/* Do Nothing */
-#endif
+	  return IOError(fname, errno);
   }
 
   virtual uint64_t NowMicros() override {
@@ -950,6 +938,7 @@ class PosixEnv : public Env {
 
   pthread_mutex_t mu_;
   std::vector<pthread_t> threads_to_join_;
+  NoHostFs* nohost;
 
 };
 
