@@ -62,6 +62,9 @@ public:
 		root = new Node("", false, NULL);
 		page_size = page_size_;
 		CreateDir("tmp");
+		CreateDir("rocksdbtest-1000");
+		CreateDir("db_test");
+		CreateFile("LOG");
 		CreateDir("usr");
 		CreateDir("var");
 		CreateDir("sbin");

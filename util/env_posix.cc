@@ -496,20 +496,23 @@ class PosixEnv : public Env {
   virtual Status NewLogger(const std::string& fname,
                            shared_ptr<Logger>* result) override {
 		printf("Enter the GetTestDirectory(string %s)\n", fname.c_str());
-    //FILE* f;
-    int fd;
+    FILE* f;
 
-	fd = nohost->Open(fname, 'a');
-    if (fd == -1) {
+	{
+		IOSTATS_TIMER_GUARD(open_nanos);
+		f = fopen(fname.c_str(), "w");
+	}
+
+    if (f == nullptr) {
       result->reset();
       return IOError(fname, errno);
     } else {
-      //int fd = fileno(f);
+      int fd = fileno(f);
 #ifdef ROCKSDB_FALLOCATE_PRESENT
       fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, 4 * 1024);
 #endif
       SetFD_CLOEXEC(fd, nullptr);
-      result->reset(new PosixLogger(fd, &PosixEnv::gettid, this, nohost));
+      result->reset(new PosixLogger(f, &PosixEnv::gettid, this));
 		printf("Exit:Fail the GetTestDirectory(string %s)\n", fname.c_str());
       return Status::OK();
     }

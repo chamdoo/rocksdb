@@ -26,9 +26,6 @@
 #include "rocksdb/status.h"
 #include "rocksdb/thread_status.h"
 
-
-#include "nohost/nohost_fs.h"
-
 #ifdef _WIN32
 // Windows API macro interference
 #undef DeleteFile

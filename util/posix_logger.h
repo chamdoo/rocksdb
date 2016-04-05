@@ -1,4 +1,4 @@
-//  Copyright (c) 2013, Facebook, Inc.  All rights reserved.
+//  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
 //  This source code is licensed under the BSD-style license found in the
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
@@ -16,22 +16,23 @@
 #include "port/sys_time.h"
 #include <time.h>
 #include <fcntl.h>
+
 #ifdef OS_LINUX
+#ifndef FALLOC_FL_KEEP_SIZE
 #include <linux/falloc.h>
 #endif
+#endif
+
 #include "rocksdb/env.h"
 #include "util/iostats_context_imp.h"
+#include "util/sync_point.h"
 #include <atomic>
-
-//#include "nohost/nohost_fs.h"
 
 namespace rocksdb {
 
-const int kDebugLogChunkSize = 128 * 1024;
-
 class PosixLogger : public Logger {
  private:
- // FILE* file_;
+  FILE* file_;
   uint64_t (*gettid_)();  // Return the thread id for the current thread
   std::atomic_size_t log_size_;
   int fd_;
@@ -39,25 +40,25 @@ class PosixLogger : public Logger {
   std::atomic_uint_fast64_t last_flush_micros_;
   Env* env_;
   bool flush_pending_;
-  NoHostFs* nohost_;
  public:
-  PosixLogger(int fd, uint64_t (*gettid)(), Env* env, NoHostFs* nohost,
+  PosixLogger(FILE* f, uint64_t (*gettid)(), Env* env,
               const InfoLogLevel log_level = InfoLogLevel::ERROR_LEVEL)
       : Logger(log_level),
+        file_(f),
         gettid_(gettid),
         log_size_(0),
-        fd_(fd),
+        fd_(fileno(f)),
         last_flush_micros_(0),
         env_(env),
-        flush_pending_(false),
-		nohost_(nohost){}
+        flush_pending_(false) {}
   virtual ~PosixLogger() {
-    nohost_->Close(fd_);
+    fclose(file_);
   }
   virtual void Flush() override {
+    TEST_SYNC_POINT_CALLBACK("PosixLogger::Flush:BeginCallback", nullptr);
     if (flush_pending_) {
       flush_pending_ = false;
-     // fflush(file_);
+      fflush(file_);
     }
     last_flush_micros_ = env_->NowMicros();
   }
@@ -126,6 +127,8 @@ class PosixLogger : public Logger {
       const size_t write_size = p - base;
 
 #ifdef ROCKSDB_FALLOCATE_PRESENT
+      const int kDebugLogChunkSize = 128 * 1024;
+
       // If this write would cross a boundary of kDebugLogChunkSize
       // space, pre-allocate more space to avoid overly large
       // allocations from filesystem allocsize options.
@@ -142,19 +145,7 @@ class PosixLogger : public Logger {
       }
 #endif
 
-     // size_t sz = fwrite(base, 1, write_size, file_);
-      size_t sz = 0;
-      size_t left = write_size;
-      while (left != 0) {
-        ssize_t done = nohost_->Write(fd_, base, left);
-        if (done < 0) {
-        	break;
-        }
-        sz += done;
-        left -= done;
-        base += done;
-      }
-
+      size_t sz = fwrite(base, 1, write_size, file_);
       flush_pending_ = true;
       assert(sz == write_size);
       if (sz > 0) {
@@ -163,7 +154,7 @@ class PosixLogger : public Logger {
       uint64_t now_micros = static_cast<uint64_t>(now_tv.tv_sec) * 1000000 +
         now_tv.tv_usec;
       if (now_micros - last_flush_micros_ >= flush_every_seconds_ * 1000000) {
-       // Flush();
+        Flush();
       }
       if (base != buffer) {
         delete[] base;
