@@ -20,7 +20,7 @@ int NoHostFs::Close(int fd){
 	delete entry;
 	open_file_table->at(fd) = NULL;
 
-	return true;
+	return 1;
 }
 int NoHostFs::Access(std::string name){
 	Node* node = global_file_tree->GetNode(name);
@@ -36,10 +36,14 @@ int NoHostFs::Rename(std::string old_name, std::string name){
 		errno = ENOENT; // No such file or directory
 		return -1;
 	}
+/*	if(node == NULL){
+		node = global_file_tree->CreateDir(name);
+		if(node == NULL) return -1;
+	}*/
 	std::vector<std::string> path_list = split(name, '/');
 	node->name = path_list.back();
 
-	return 0;
+	return 1;
 }
 Node* NoHostFs::ReadDir(int fd){
 	if(fd < 0){
@@ -75,11 +79,13 @@ int NoHostFs::DeleteDir(std::string name){
 	return global_file_tree->DeleteDir(name);
 }
 int NoHostFs::CreateDir(std::string name){
+	printf("Enter NoHostFs::CreateDir(%s)\n", name.c_str());
 	if(global_file_tree->CreateDir(name) == NULL)
 		return -1;
 	return 1;
 }
 int NoHostFs::CreateFile(std::string name){
+	printf("Enter NoHostFs::CreateFile(%s)\n", name.c_str());
 	if(global_file_tree->CreateFile(name) == NULL)
 		return -1;
 	return 1;
@@ -106,18 +112,18 @@ uint64_t NoHostFs::GetFileModificationTime(std::string name){
 }
 bool NoHostFs::Link(std::string src, std::string target){
 	Node* node = global_file_tree->Link(src, target);
-	if(node == NULL) return -1;
+	if(node == NULL) return false;
 	return true;
 }
 bool NoHostFs::IsEof(int fd){
 	if(fd < 0){
 		errno = EBADF; // Bad file number
-		return -1;
+		return false;
 	}
 	OpenFileEntry* entry = open_file_table->at(fd);
 	if(entry == NULL){
 		errno = EBADF; // Bad file number
-		return -1;
+		return false;
 	}
 	if(entry->r_offset == entry->node->GetSize())
 		return true;
@@ -162,6 +168,13 @@ int NoHostFs::Open(std::string name, char type){
 		ret = global_file_tree->CreateFile(name);
 		start_address = GetFreeBlockAddress();
 		ret->file_info->push_back(new FileSegInfo(start_address, 0));
+		break;
+	case 'a' :
+		if(ret == NULL){
+			ret = global_file_tree->CreateFile(name);
+			start_address = GetFreeBlockAddress();
+			ret->file_info->push_back(new FileSegInfo(start_address, 0));
+		}
 		break;
 	default:
 		std::cout << "r:readonly, w:read/write, you must choose one of them\n";

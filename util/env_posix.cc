@@ -173,10 +173,12 @@ class PosixEnv : public Env {
 
     if (fd == -1) {
       *result = nullptr;
+		printf("Exit:Fail the NewSequentialFile(string %s)\n", fname.c_str());
       return IOError(fname, errno);
     } else {
       SetFD_CLOEXEC(fd, &options);
       result->reset(new PosixSequentialFile(fname, fd, options, nohost));
+		printf("Exit:Success the NewSequentialFile(string %s)\n", fname.c_str());
       return Status::OK();
     }
   }
@@ -190,9 +192,11 @@ class PosixEnv : public Env {
 	fd = nohost->Open(fname.c_str(), 'r');
     SetFD_CLOEXEC(fd, &options);
     if (fd < 0) {
+		printf("Exit:Fail the NewRandomAccessFile(string %s)\n", fname.c_str());
     	return IOError(fname, errno);
     }else {
       result->reset(new PosixRandomAccessFile(fname, fd, options, nohost));
+		printf("Exit:Success the NewRandomAccessFile(string %s)\n", fname.c_str());
       return Status::OK();
     }
   }
@@ -207,6 +211,7 @@ class PosixEnv : public Env {
     fd = nohost->Open(fname.c_str(), 'w');
 
     if (fd < 0) {
+		printf("Exit:Fail the NewWritableFile(string %s)\n", fname.c_str());
       return IOError(fname, errno);
     } else {
       SetFD_CLOEXEC(fd, &options);
@@ -215,6 +220,7 @@ class PosixEnv : public Env {
 	  EnvOptions no_mmap_writes_options = options;
 	  no_mmap_writes_options.use_mmap_writes = false;
 	  result->reset(new PosixWritableFile(fname, fd, no_mmap_writes_options, nohost));
+		printf("Exit:Success the NewWritableFile(string %s)\n", fname.c_str());
 	  return Status::OK();
     }
   }
@@ -227,7 +233,7 @@ class PosixEnv : public Env {
     result->reset();
     Status s;
     int fd = -1;
-    fd = nohost->Open(old_fname.c_str(), 'w');
+    fd = nohost->Open(old_fname.c_str(), 'a');
     if (fd < 0) {
       s = IOError(fname, errno);
     }
@@ -237,12 +243,14 @@ class PosixEnv : public Env {
       if (nohost->Rename(old_fname.c_str(), fname.c_str()) != 1) {
         Status r = IOError(old_fname, errno);
         nohost->Close(fd);
+		printf("Exit:Fail the ReuseWritableFile(string %s)\n", fname.c_str());
         return r;
       }
 		EnvOptions no_mmap_writes_options = options;
 		no_mmap_writes_options.use_mmap_writes = false;
 		result->reset(new PosixWritableFile(fname, fd, no_mmap_writes_options, nohost));
     }
+	printf("Exit:Success the ReuseWritableFile(string %s)\n", fname.c_str());
     return s;
   }
 
@@ -254,9 +262,11 @@ class PosixEnv : public Env {
     fd = nohost->Open(name.c_str(), 'd');
 
     if (fd < 0) {
+    	printf("Exit:Fail the NewDirectory(string %s)\n", name.c_str());
       return IOError(name, errno);
     } else {
       result->reset(new PosixDirectory(fd, nohost));
+  	printf("Exit:Success the NewDirectory(string %s)\n", name.c_str());
       return Status::OK();
     }
   }
@@ -266,8 +276,14 @@ class PosixEnv : public Env {
 
     int result = nohost->Access(fname.c_str());
 
-    if (result == 1) return Status::OK();
-    else return Status::NotFound();
+    if (result == 1) {
+      	printf("Exit:Success the FileExists(string %s)\n", fname.c_str());
+    	return Status::OK();
+    }
+    else {
+      	printf("Exit:Fail the FileExists(string %s)\n", fname.c_str());
+    	return Status::NotFound();
+    }
 
   }
 
@@ -278,6 +294,7 @@ class PosixEnv : public Env {
     int d = -1;
     d = nohost->Open(dir.c_str(), 'd');
     if (d == -1) {
+      	printf("Exit:Fail the GetChildren(string %s)\n", dir.c_str());
       return IOError(dir, errno);
     }
     Node* entry;
@@ -288,6 +305,7 @@ class PosixEnv : public Env {
       i++;
     }
     nohost->Close(d);
+  	printf("Exit:Success the GetChildren(string %s)\n", dir.c_str());
     return Status::OK();
   }
 
@@ -295,8 +313,10 @@ class PosixEnv : public Env {
 		printf("Enter the DeleteFile(string %s)\n", fname.c_str());
     Status result;
     if (nohost->DeleteFile(fname) != 1) {
+      	printf("Exit:Fail the DeleteFile(string %s)\n", fname.c_str());
       result = IOError(fname, errno);
     }
+  	printf("Exit:Success the DeleteFile(string %s)\n", fname.c_str());
     return result;
   };
 
@@ -304,10 +324,10 @@ class PosixEnv : public Env {
 		printf("Enter the CreateDir(string %s)\n", name.c_str());
     Status result;
     if (nohost->CreateDir(name) != 1) {
-		printf("	Fail\n");
+      	printf("Exit:Fail the CreateDir(string %s)\n", name.c_str());
       result = IOError(name, errno);
     }
-	printf("	Success\n");
+  	printf("Exit:Success the CreateDir(string %s)\n", name.c_str());
 	//nohost->global_file_tree->printAll();
     return result;
   };
@@ -317,6 +337,7 @@ class PosixEnv : public Env {
     Status result;
     if (nohost->CreateDir(name) != 1) {
       if (errno != EEXIST) {
+    	  	printf("Exit:Fail the CreateDir(string %s)\n", name.c_str());
         result = IOError(name, errno);
       } else if (nohost->DirExists(name)) {
     	  // Check that name is actually a directory.
@@ -324,6 +345,7 @@ class PosixEnv : public Env {
         result = Status::IOError("`"+name+"' exists but is not a directory");
       }
     }
+  	printf("Exit:Success the CreateDir(string %s)\n", name.c_str());
     return result;
   };
 
@@ -331,8 +353,10 @@ class PosixEnv : public Env {
 		printf("Enter the DeleteDir(string %s)\n", name.c_str());
     Status result;
     if (nohost->DeleteDir(name) != 1) {
+      	printf("Exit:Fail the DeleteDir(string %s)\n", name.c_str());
       result = IOError(name, errno);
     }
+  	printf("Exit:Success the DeleteDir(string %s)\n", name.c_str());
     return result;
   };
 
@@ -350,9 +374,11 @@ class PosixEnv : public Env {
 		printf("Enter the GetFileModificationTime(string %s)\n", fname.c_str());
     uint64_t mtime = 0;
     if ((mtime = nohost->GetFileModificationTime(fname)) != 1) {
+      	printf("Exit:Fail the GetFileModificationTime(string %s)\n", fname.c_str());
       return IOError(fname, errno);
     }
     *file_mtime = mtime;
+  	printf("Exit:Success the GetFileModificationTime(string %s)\n", fname.c_str());
     return Status::OK();
   }
 
@@ -361,8 +387,10 @@ class PosixEnv : public Env {
 		printf("Enter the RenameFile(string %s, string %s)\n", src.c_str(), target.c_str());
     Status result;
     if (nohost->Rename(src.c_str(), target.c_str()) != 1) {
+      	printf("Exit:Fail the RenameFile(string %s)\n", src.c_str());
       result = IOError(src, errno);
     }
+  	printf("Exit:Success the RenameFile(string %s)\n", src.c_str());
     return result;
   }
 
@@ -382,7 +410,7 @@ class PosixEnv : public Env {
     *lock = nullptr;
     Status result;
     int fd;
-    fd = nohost->Open(fname.c_str(), 'w');
+    fd = nohost->Open(fname.c_str(), 'a');
 
     if (fd < 0) {
       result = IOError(fname, errno);
@@ -396,9 +424,8 @@ class PosixEnv : public Env {
       my_lock->filename = fname;
       *lock = my_lock;
     }
-#ifdef NOHOST
-	/* TODO: open a file and lock it */
-#endif
+
+  	printf("Exit:Success the LockFile(string %s)\n", fname.c_str());
     return result;
   }
 
@@ -413,9 +440,7 @@ class PosixEnv : public Env {
     delete my_lock;
 
 
-#ifdef NOHOST
-	/* TODO: open a file and lock it */
-#endif
+  	printf("Exit:Success the UnlockFile(string %s)\n", my_lock->filename.c_str());
     return result;
   }
 
@@ -443,6 +468,7 @@ class PosixEnv : public Env {
     // Directory may already exist
     //printf("CreateDir( %s );\n", result->c_str());
     CreateDir(*result);
+	printf("Exit: the GetTestDirectory(string %s)\n", result->c_str());
     return Status::OK();
   }
 
@@ -470,23 +496,24 @@ class PosixEnv : public Env {
   virtual Status NewLogger(const std::string& fname,
                            shared_ptr<Logger>* result) override {
 		printf("Enter the GetTestDirectory(string %s)\n", fname.c_str());
-    FILE* f;
-    {
-      IOSTATS_TIMER_GUARD(open_nanos);
-      f = fopen(fname.c_str(), "w");
-    }
-    if (f == nullptr) {
+    //FILE* f;
+    int fd;
+
+	fd = nohost->Open(fname, 'a');
+    if (fd == -1) {
       result->reset();
       return IOError(fname, errno);
     } else {
-      int fd = fileno(f);
+      //int fd = fileno(f);
 #ifdef ROCKSDB_FALLOCATE_PRESENT
       fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, 4 * 1024);
 #endif
       SetFD_CLOEXEC(fd, nullptr);
-      result->reset(new PosixLogger(f, &PosixEnv::gettid, this));
+      result->reset(new PosixLogger(fd, &PosixEnv::gettid, this, nohost));
+		printf("Exit:Fail the GetTestDirectory(string %s)\n", fname.c_str());
       return Status::OK();
     }
+	printf("Exit:Success the GetTestDirectory(string %s)\n", fname.c_str());
 	  return IOError(fname, errno);
   }
 

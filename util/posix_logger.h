@@ -23,13 +23,15 @@
 #include "util/iostats_context_imp.h"
 #include <atomic>
 
+//#include "nohost/nohost_fs.h"
+
 namespace rocksdb {
 
 const int kDebugLogChunkSize = 128 * 1024;
 
 class PosixLogger : public Logger {
  private:
-  FILE* file_;
+ // FILE* file_;
   uint64_t (*gettid_)();  // Return the thread id for the current thread
   std::atomic_size_t log_size_;
   int fd_;
@@ -37,24 +39,25 @@ class PosixLogger : public Logger {
   std::atomic_uint_fast64_t last_flush_micros_;
   Env* env_;
   bool flush_pending_;
+  NoHostFs* nohost_;
  public:
-  PosixLogger(FILE* f, uint64_t (*gettid)(), Env* env,
+  PosixLogger(int fd, uint64_t (*gettid)(), Env* env, NoHostFs* nohost,
               const InfoLogLevel log_level = InfoLogLevel::ERROR_LEVEL)
       : Logger(log_level),
-        file_(f),
         gettid_(gettid),
         log_size_(0),
-        fd_(fileno(f)),
+        fd_(fd),
         last_flush_micros_(0),
         env_(env),
-        flush_pending_(false) {}
+        flush_pending_(false),
+		nohost_(nohost){}
   virtual ~PosixLogger() {
-    fclose(file_);
+    nohost_->Close(fd_);
   }
   virtual void Flush() override {
     if (flush_pending_) {
       flush_pending_ = false;
-      fflush(file_);
+     // fflush(file_);
     }
     last_flush_micros_ = env_->NowMicros();
   }
@@ -139,7 +142,19 @@ class PosixLogger : public Logger {
       }
 #endif
 
-      size_t sz = fwrite(base, 1, write_size, file_);
+     // size_t sz = fwrite(base, 1, write_size, file_);
+      size_t sz = 0;
+      size_t left = write_size;
+      while (left != 0) {
+        ssize_t done = nohost_->Write(fd_, base, left);
+        if (done < 0) {
+        	break;
+        }
+        sz += done;
+        left -= done;
+        base += done;
+      }
+
       flush_pending_ = true;
       assert(sz == write_size);
       if (sz > 0) {
@@ -148,7 +163,7 @@ class PosixLogger : public Logger {
       uint64_t now_micros = static_cast<uint64_t>(now_tv.tv_sec) * 1000000 +
         now_tv.tv_usec;
       if (now_micros - last_flush_micros_ >= flush_every_seconds_ * 1000000) {
-        Flush();
+       // Flush();
       }
       if (base != buffer) {
         delete[] base;

@@ -335,7 +335,7 @@ TOOLS = \
 	rocksdb_dump \
 	rocksdb_undump
 
-BENCHMARKS =# db_bench table_reader_bench cache_bench memtablerep_bench
+BENCHMARKS = db_bench# table_reader_bench cache_bench memtablerep_bench
 
 # if user didn't config LIBNAME, set the default
 ifeq ($(LIBNAME),)

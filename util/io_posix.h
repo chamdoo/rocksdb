@@ -9,7 +9,6 @@
 #pragma once
 #include <unistd.h>
 #include "rocksdb/env.h"
-#include "nohost/nohost_fs.h"
 
 // For non linux platform, the following macros are used only as place
 // holder.
