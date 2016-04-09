@@ -40,9 +40,11 @@ class PosixLogger : public Logger {
   std::atomic_uint_fast64_t last_flush_micros_;
   Env* env_;
   bool flush_pending_;
+  int nfd_;
+  NoHostFs* nohost_; // NOHOST
  public:
-  PosixLogger(FILE* f, uint64_t (*gettid)(), Env* env,
-              const InfoLogLevel log_level = InfoLogLevel::ERROR_LEVEL)
+  PosixLogger(FILE* f, uint64_t (*gettid)(), int nfd, NoHostFs* nohost, Env* env,
+              const InfoLogLevel log_level = InfoLogLevel::ERROR_LEVEL) // NOHOST
       : Logger(log_level),
         file_(f),
         gettid_(gettid),
@@ -50,9 +52,12 @@ class PosixLogger : public Logger {
         fd_(fileno(f)),
         last_flush_micros_(0),
         env_(env),
-        flush_pending_(false) {}
+        flush_pending_(false),
+		nfd_(nfd), // NOHOST
+		nohost_(nohost) {} // NOHOST
   virtual ~PosixLogger() {
     fclose(file_);
+    nohost_->Close(nfd_); // NOHOST
   }
   virtual void Flush() override {
     TEST_SYNC_POINT_CALLBACK("PosixLogger::Flush:BeginCallback", nullptr);
@@ -144,6 +149,19 @@ class PosixLogger : public Logger {
             static_cast<off_t>(desired_allocation_chunk * kDebugLogChunkSize));
       }
 #endif
+
+      // NOHOST
+      const char* src = base;
+      size_t left = write_size;
+      size_t sum = 0;
+      while (left != 0) {
+        ssize_t done = nohost_->Write(nfd_, src, left);
+        if (done < 0) break;
+        left -= done;
+        src += done;
+        sum += done;
+      }
+      // NOHOST
 
       size_t sz = fwrite(base, 1, write_size, file_);
       flush_pending_ = true;

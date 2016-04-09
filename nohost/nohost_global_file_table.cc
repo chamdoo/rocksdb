@@ -8,12 +8,11 @@
 namespace rocksdb{
 
 // Node implementation
-uint64_t Node::GetSize(){
+long int Node::GetSize(){
 	if(isfile){
-		int total = 0;
-		for(uint64_t i = 0; i < file_info->size(); i++){
+		size_t total = 0;
+		for(size_t i = 0; i < file_info->size(); i++){
 			total += (file_info->at(i)->size);
-			//printf("%dth,  size : %d\n", i, (file_info->at(i)->size));
 		}
 		return total;
 	}
@@ -33,31 +32,41 @@ Node* GlobalFileTableTree::DirectoryTraverse(const std::string path, bool isCrea
 
 	std::vector<std::string> path_list = split(subpath, '/');
 	std::vector<std::string>::iterator iter = path_list.begin();
-	Node* dir = root;
-	Node* ret = NULL;
-
-	if(path_list.size() == 0) return dir;
-	if(isCreate) path_list.pop_back();
-
-	if(path_list.size() == 0) return dir;
-
-	for(; iter != path_list.end(); iter++){
-		if(dir->isfile){
-			if(iter ==path_list.end()) break;
-			else ret = NULL;
+	while(iter != path_list.end()){
+		if(iter->compare("") == 0){
+			path_list.erase(iter);
+			continue;
 		}
-		if( (ret = FindChild(dir, *iter)) == NULL) break;
-		dir = ret;
+		iter++;
+	}
+	Node* ret = root;
+
+	if(path_list.size() == 0) return root;
+	if(isCreate) path_list.pop_back();
+	if(path_list.size() == 0) return root;
+
+	for(unsigned int i = 0; i < path_list.size(); i++){
+		ret = FindChild(ret, path_list[i]);
+
+		if(ret == NULL){
+			errno = ENOENT;
+			return NULL;
+		}
 	}
 	return ret;
 }
 Node* GlobalFileTableTree::FindChild(Node* dir, std::string name){
 	Node* child = NULL;
+
+	if(dir->isfile)
+		return NULL;
 	std::list<Node*>::iterator iter = dir->children->begin();
 
 	for(; iter != dir->children->end(); iter++){
-		if((*iter)->name == name)
+		if((*iter)->name->compare(name) == 0){
 			child = *iter;
+			break;
+		}
 	}
 	return child;
 }
@@ -74,16 +83,20 @@ Node* GlobalFileTableTree::CreateDir(std::string name){
 
 	Node* curdir = DirectoryTraverse(name, false);
 	if(curdir != NULL){
-		if(curdir->isfile){
+/*		if(curdir->isfile){
 			errno = ENOTDIR; // Not a directory
 			return NULL;
-		}
+		}*/
 		errno = EEXIST; // File already exists
-		std::cout << name <<" file already exist."<<std::endl;
-		return curdir;
+		return NULL;
 	}
 	curdir = DirectoryTraverse(name, true);
-	Node* newdir = new Node(new_dir_name, false, curdir);
+	if(curdir == NULL){
+		errno = ENOENT; // No such file or directory
+		return NULL;
+	}
+
+	Node* newdir = new Node(new std::string(new_dir_name), false, curdir);
 	curdir->children->push_back(newdir);
 
 	return newdir;
@@ -91,7 +104,7 @@ Node* GlobalFileTableTree::CreateDir(std::string name){
 Node* GlobalFileTableTree::CreateFile(std::string name){
 	std::vector<std::string> path_list = split(name, '/');
 	if(path_list.size() == 0){
-		std::cout <<"A file must have a name."<<std::endl;
+//		std::cout <<"A file must have a name."<<std::endl;
 		return NULL;
 	}
 
@@ -99,13 +112,18 @@ Node* GlobalFileTableTree::CreateFile(std::string name){
 
 	Node* curdir = DirectoryTraverse(name, false);
 	if(curdir != NULL){
-		errno = EEXIST; // File already exists
-		std::cout << name <<" file already exist."<<std::endl;
+		errno = EEXIST; // No such file or directory
+//		std::cout << name <<" file already exist."<<std::endl;
 		return NULL;
 	}
 
 	curdir = DirectoryTraverse(name, true);
-	Node* newfile = new Node(new_file_name, true, curdir);
+	if(curdir == NULL){
+		errno = ENOENT; // No such file or directory
+//		std::cout << name <<" file already exist."<<std::endl;
+		return NULL;
+	}
+	Node* newfile = new Node(new std::string(new_file_name), true, curdir);
 	curdir->children->push_front(newfile);
 
 	return newfile;
@@ -114,7 +132,7 @@ Node* GlobalFileTableTree::CreateFile(std::string name){
 Node* GlobalFileTableTree::Link(std::string src, std::string target){
 	std::vector<std::string> path_list = split(src, '/');
 	if(path_list.size() == 0){
-		std::cout <<"A file must have a name."<<std::endl;
+//		std::cout <<"A file must have a name."<<std::endl;
 		return NULL;
 	}
 
@@ -123,7 +141,7 @@ Node* GlobalFileTableTree::Link(std::string src, std::string target){
 	Node* curdir = DirectoryTraverse(src, false);
 	if(curdir != NULL){
 		errno = EEXIST; // File already exists
-		std::cout << src <<" file already exist."<<std::endl;
+//		std::cout << src <<" file already exist."<<std::endl;
 		return NULL;
 	}
 	curdir = DirectoryTraverse(src, true);
@@ -131,7 +149,7 @@ Node* GlobalFileTableTree::Link(std::string src, std::string target){
 	Node* target_node = GetNode(target);
 	if(target_node == NULL){
 		errno = ENOENT; // No such file or directory
-		std::cout << src <<" a target file doesn't exist."<<std::endl;
+//		std::cout << src <<" a target file doesn't exist."<<std::endl;
 		return NULL;
 	}
 
@@ -141,11 +159,12 @@ Node* GlobalFileTableTree::Link(std::string src, std::string target){
 	return target_node;
 }
 
-bool GlobalFileTableTree::DeleteDir(std::string name){
+int GlobalFileTableTree::DeleteDir(std::string name){
 	std::vector<std::string> path_list = split(name, '/');
 	if(path_list.size() == 0){
-		std::cout <<"A file must have a name."<<std::endl;
-		return false;
+		errno = ENOENT; // No such file or directory
+//		std::cout <<"A file must have a name."<<std::endl;
+		return -1;
 	}
 
 	std::string remove_dir_name = path_list.back();
@@ -153,31 +172,43 @@ bool GlobalFileTableTree::DeleteDir(std::string name){
 	Node* curdir = DirectoryTraverse(name, false);
 	if(curdir == NULL){
 		errno = ENOENT; // No such file or directory
-		std::cout << name <<" file doesn't exist."<<std::endl;
-		return false;
+//		std::cout << name <<" file doesn't exist."<<std::endl;
+		return -1;
 	}
 	if(curdir->isfile){
 		errno = ENOTDIR; // Not a directory
 		return -1;
 	}
+	if(curdir->children->size() != 0){
+		std::list<Node*>::iterator iter = curdir->children->begin();
+/*		printf("children list: \n");
+		while(iter != curdir->children->end()){
+			printf("  : %s\n", (*iter)->name->c_str());
+			iter++;
+		}*/
+
+		errno = ENOTEMPTY;
+		return -1;
+	}
+
 	curdir->link_count--;
 	if(curdir->link_count > 0)
-		return true;
+		return 0;
 
-	RecursiveRemoveDir(curdir);
+//	RecursiveRemoveDir(curdir);
 
 	curdir = curdir->parent;
 	std::list<Node*>::iterator iter = curdir->children->begin();
 	while(iter != curdir->children->end()){
-		if((*iter)->name == remove_dir_name){
-			curdir->children->erase(iter);
+		if((*iter)->name->compare(remove_dir_name) == 0){
 			delete (*iter);
-			return true;
+			curdir->children->erase(iter);
+			return 0;
 		}
 		iter++;
 	}
 
-	return false;
+	return -1;
 }
 bool GlobalFileTableTree::RecursiveRemoveDir(Node* cur){
 	if(cur->isfile)
@@ -185,9 +216,9 @@ bool GlobalFileTableTree::RecursiveRemoveDir(Node* cur){
 	if(cur->children->size() == 0)
 		return true;
 	else{
-		std::list<Node*>::iterator iter = cur->children->begin();
-		while(iter != cur->children->end()){
-			RecursiveRemoveDir((*iter));
+ 		std::list<Node*>::iterator iter = cur->children->begin();
+ 		while(iter != cur->children->end()){
+			//RecursiveRemoveDir((*iter));
 			if( (*iter)->link_count > 1)
 				(*iter)->link_count--;
 			else{
@@ -201,19 +232,19 @@ bool GlobalFileTableTree::RecursiveRemoveDir(Node* cur){
 }
 
 
-bool GlobalFileTableTree::DeleteFile(std::string name){
+int GlobalFileTableTree::DeleteFile(std::string name){
 	std::vector<std::string> path_list = split(name, '/');
 	if(path_list.size() == 0){
-		std::cout <<"A file must have a name."<<std::endl;
-		return false;
+//		std::cout <<"A file must have a name."<<std::endl;
+		return -1;
 	}
 	std::string remove_file_name = path_list.back();
 
 	Node* curfile = DirectoryTraverse(name, false);
 	if(curfile == NULL){
 		errno = ENOENT; // No such file or directory
-		std::cout << name <<" file doesn't exist."<<std::endl;
-		return false;
+//		std::cout << name <<" file doesn't exist."<<std::endl;
+		return -1;
 	}
 	if(!curfile->isfile){
 		errno = EISDIR; //Is a directory
@@ -222,41 +253,41 @@ bool GlobalFileTableTree::DeleteFile(std::string name){
 
 	curfile->link_count--;
 	if(curfile->link_count > 0)
-		return true;
+		return 0;
 
 	Node* curdir = curfile->parent;
 	std::list<Node*>::iterator iter = curdir->children->begin();
 	while(iter != curdir->children->end()){
-		if((*iter)->name == remove_file_name){
-			curdir->children->erase(iter);
+		if((*iter)->name->compare(remove_file_name) == 0){
 			FreeAllocatedPage(*iter);
 			delete (*iter);
-			return true;
+			curdir->children->erase(iter);
+			return 0;
 		}
 		iter++;
 	}
 
-	return false;
+	return -1;
 }
 int GlobalFileTableTree::Lock(std::string name, bool lock){
 	Node* node = NULL;
 	if( (node = DirectoryTraverse(name, false)) == NULL){
 		errno = ENOENT; // No such file or directory
-		std::cout << name <<" file doesn't exist."<<std::endl;
+//		std::cout << name <<" file doesn't exist."<<std::endl;
 		return -1;
 	}
 	if(lock)
 		node->lock = true;
 	else
 		node->lock = false;
-	return 1;
+	return 0;
 }
 
 Node* GlobalFileTableTree::GetNode(std::string name){
 	Node* node = NULL;
 	if( (node = DirectoryTraverse(name, false)) == NULL){
 		errno = ENOENT; // No such file or directory
-		std::cout << name <<" file doesn't exist."<<std::endl;
+//		std::cout << name <<" file doesn't exist."<<std::endl;
 		return NULL;
 	}
 	return node;
@@ -267,7 +298,7 @@ int GlobalFileTableTree::FreeAllocatedPage(Node* node){
 	if(!node->isfile) return -1;
 
 	std::vector<FileSegInfo*>::iterator iter = node->file_info->begin();
-	unsigned int i = 0;
+	size_t i = 0;
 	while(iter != node->file_info->end()){
 		i = (*iter)->start_address / page_size;
 		if(i < free_page_bitmap->size())
@@ -288,7 +319,7 @@ bool GlobalFileTableTree::print(Node* cur, std::string indent){
 	else{
 		std::list<Node*>::iterator iter = cur->children->begin();
 		while(iter != cur->children->end()){
-			std::cout << indent << (*iter)->name << ", type:" << (*iter)->isfile
+			std::cout << indent << (*iter)->name->c_str() << ", type:" << (*iter)->isfile
 					<< std::endl;
 			print((*iter), indent + "   ");
 			iter++;
@@ -312,7 +343,7 @@ std::vector<std::string> split(const std::string &s, char delim) {
     return elems;
 }
 
-uint64_t GetCurrentTime(){
+ssize_t GetCurrentTime(){
 	struct timeval current;
 	gettimeofday(&current, NULL);
 

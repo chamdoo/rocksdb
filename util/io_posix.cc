@@ -1,4 +1,4 @@
-//  Copyright (c) 2013, Facebook, Inc.  All rights reserved.
+//  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
 //  This source code is licensed under the BSD-style license found in the
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
@@ -7,10 +7,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-//#ifdef ROCKSDB_LIB_IO_POSIX
+#ifdef ROCKSDB_LIB_IO_POSIX
 
-#include <iostream>
-using namespace std;
 #include "util/io_posix.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -51,47 +49,86 @@ int Fadvise(int fd, off_t offset, size_t len, int advice) {
 /*
  * PosixSequentialFile
  */
-PosixSequentialFile::PosixSequentialFile(const std::string& fname, int fd,
-                                         const EnvOptions& options, NoHostFs* nohost)
+PosixSequentialFile::PosixSequentialFile(const std::string& fname, FILE* f,
+                                         const EnvOptions& options, int nfd, NoHostFs* nohost) // NOHOST
     : filename_(fname),
-      fd_(fd),
+      file_(f),
+      fd_(fileno(f)),
       use_os_buffer_(options.use_os_buffer),
-	  nohost_(nohost){}
+	  nfd_(nfd), // NOHOST
+	  nohost_(nohost){} // NOHOST
 
-PosixSequentialFile::~PosixSequentialFile() { nohost_->Close(fd_);}
+PosixSequentialFile::~PosixSequentialFile() { fclose(file_); nohost_->Close(nfd_); } // NOHOST
 
 Status PosixSequentialFile::Read(size_t n, Slice* result, char* scratch) {
   Status s;
   size_t r = 0;
-  r = nohost_->SequentialRead(fd_, scratch, n);
-
+  do {
+    r = fread_unlocked(scratch, 1, n, file_);
+  } while (r == 0 && ferror(file_) && errno == EINTR);
   *result = Slice(scratch, r);
   if (r < n) {
-    if (nohost_->IsEof(fd_)) {
+    if (feof(file_)) {
       // We leave status as ok if we hit the end of the file
       // We also clear the error so that the reads can continue
       // if a new data is written to the file
-    	s = Status::OK();
+      clearerr(file_);
     } else {
       // A partial read with an error: return a non-ok status
       s = IOError(filename_, errno);
     }
-  }/*
+  }
   if (!use_os_buffer_) {
     // we need to fadvise away the entire range of pages because
     // we do not want readahead pages to be cached.
     Fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED);  // free OS pages
-  }*/
-  return s;
+  }
 
+  // NOHOST
+  Status ns;
+  size_t nr = 0;
+  nr = nohost_->SequentialRead(nfd_, scratch, n);
+
+  Slice nresult = Slice(scratch, nr);
+  if (nr < n) {
+    if (nohost_->IsEof(nfd_)) {
+    	ns = Status::OK();
+    } else {
+      ns = IOError(filename_, errno);
+    }
+  }
+  int comv = 0;
+
+  if((comv = nresult.compare(*result)) != 0)
+	  printf("PosixSequentialFile:: result value is not same:[%zu, %zu]compare return value:%d\n"
+			  "=======================================ORGINAL============================================\n"
+			  "[%s]\n"
+			  "========================================NOHOST============================================\n"
+			  "[%s]\n",
+			  r, nr, comv, result->data_, nresult.data_);
+  // NOHOST
+
+  return ns;
 }
 
 Status PosixSequentialFile::Skip(uint64_t n) {
-  if (nohost_->Lseek(fd_, n) < 0) {
-    return IOError(filename_, errno);
+	Status result;
+	Status nresult;
+  if (fseek(file_, static_cast<long int>(n), SEEK_CUR)) {
+	  result = IOError(filename_, errno); // NOHOST
   }
-  return Status::OK();
 
+  // NOHOST
+  int value = 0;
+  if ((value = nohost_->Lseek(nfd_, n)) < 0) {
+	  nresult = IOError(filename_, errno);
+	 // printf("PosixSequentialFile::Skip:: result value is not same\n");
+  }
+  if(result != nresult)
+	  printf("PosixSequentialFile::Skip:: result value is not same:compare return value:%d\n", value);
+  // NOHOST
+
+  return nresult;
 }
 
 Status PosixSequentialFile::InvalidateCache(size_t offset, size_t length) {
@@ -104,9 +141,6 @@ Status PosixSequentialFile::InvalidateCache(size_t offset, size_t length) {
     return Status::OK();
   }
   return IOError(filename_, errno);
-#endif
-#ifdef NOHOST
-	/* Do Nothing */
 #endif
 }
 
@@ -136,9 +170,6 @@ static size_t GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
   rid = EncodeVarint64(rid, uversion);
   assert(rid >= id);
   return static_cast<size_t>(rid - id);
-#ifdef NOHOST
-	/* Get a random number */
-#endif
 }
 }
 #endif
@@ -149,25 +180,35 @@ static size_t GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
  * pread() based random-access
  */
 PosixRandomAccessFile::PosixRandomAccessFile(const std::string& fname, int fd,
-                                             const EnvOptions& options, NoHostFs* nohost)
-    : filename_(fname), fd_(fd), use_os_buffer_(options.use_os_buffer), nohost_(nohost) {
+                                             const EnvOptions& options, int nfd, NoHostFs* nohost)
+    : filename_(fname), fd_(fd), use_os_buffer_(options.use_os_buffer), nfd_(nfd), nohost_(nohost) { // NOHOST
   assert(!options.use_mmap_reads || sizeof(void*) < 8);
 }
 
-PosixRandomAccessFile::~PosixRandomAccessFile() { nohost_->Close(fd_); }
+PosixRandomAccessFile::~PosixRandomAccessFile() { close(fd_);  nohost_->Close(nfd_);} // NOHOST
 
 Status PosixRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
                                    char* scratch) const {
   Status s;
   ssize_t r = -1;
+  size_t left = n;
+  uint64_t noffset = offset; // NOHOST
   char* ptr = scratch;
+  while (left > 0) {
+    r = pread(fd_, ptr, left, static_cast<off_t>(offset));
 
-  uint64_t origin = nohost_->Lseek(fd_, 0);
+    if (r <= 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      break;
+    }
+    ptr += r;
+    offset += r;
+    left -= r;
+  }
 
-  nohost_->Lseek(fd_, offset);
-  r = nohost_->SequentialRead(fd_, ptr, n);
-
-  *result = Slice(scratch, (r < 0) ? 0 : r);
+  *result = Slice(scratch, (r < 0) ? 0 : n - left);
   if (r < 0) {
     // An error: return a non-ok status
     s = IOError(filename_, errno);
@@ -177,16 +218,41 @@ Status PosixRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
     // we do not want readahead pages to be cached.
     Fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED);  // free OS pages
   }
-  nohost_->Lseek(fd_, origin);
-  return s;
+
+  // NOHOST
+  Status ns;
+  ssize_t nr = -1;
+  size_t nleft = n;
+  char* nptr = scratch;
+  while (nleft > 0) {
+    nr = nohost_->Pread(nfd_, nptr, n, static_cast<off_t>(noffset));
+    if (nr <= 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      break;
+    }
+    nptr += nr;
+    offset += nr;
+    nleft -= nr;
+  }
+  Slice nresult = Slice(scratch, (nr < 0) ? 0 : nr);
+  if (nr < 0) {
+    // An error: return a non-ok status
+    ns = IOError(filename_, errno);
+  }
+
+  int comv = 0;
+  if((comv = nresult.compare(*result)) != 0)
+	  printf("PosixRandomAccessFile::Read:: result value is not same:compare return value:%d\n", comv);
+  // NOHOST
+
+  return ns;
 }
 
 #ifdef OS_LINUX
 size_t PosixRandomAccessFile::GetUniqueId(char* id, size_t max_size) const {
   return GetUniqueIdFromFile(fd_, id, max_size);
-#ifdef NOHOST
-	/* Get a random number */
-#endif
 }
 #endif
 
@@ -211,9 +277,6 @@ void PosixRandomAccessFile::Hint(AccessPattern pattern) {
       assert(false);
       break;
   }
-#ifdef NOHOST
-	/* Do Nothing -- Ignore */
-#endif
 }
 
 Status PosixRandomAccessFile::InvalidateCache(size_t offset, size_t length) {
@@ -230,13 +293,287 @@ Status PosixRandomAccessFile::InvalidateCache(size_t offset, size_t length) {
 }
 
 /*
+ * PosixMmapReadableFile
+ *
+ * mmap() based random-access
+ */
+// base[0,length-1] contains the mmapped contents of the file.
+PosixMmapReadableFile::PosixMmapReadableFile(const int fd,
+                                             const std::string& fname,
+                                             void* base, size_t length,
+                                             const EnvOptions& options)
+    : fd_(fd), filename_(fname), mmapped_region_(base), length_(length) {
+  fd_ = fd_ + 0;  // suppress the warning for used variables
+  assert(options.use_mmap_reads);
+  assert(options.use_os_buffer);
+}
+
+PosixMmapReadableFile::~PosixMmapReadableFile() {
+  int ret = munmap(mmapped_region_, length_);
+  if (ret != 0) {
+    fprintf(stdout, "failed to munmap %p length %" ROCKSDB_PRIszt " \n",
+            mmapped_region_, length_);
+  }
+}
+
+Status PosixMmapReadableFile::Read(uint64_t offset, size_t n, Slice* result,
+                                   char* scratch) const {
+  Status s;
+  if (offset > length_) {
+    *result = Slice();
+    return IOError(filename_, EINVAL);
+  } else if (offset + n > length_) {
+    n = static_cast<size_t>(length_ - offset);
+  }
+  *result = Slice(reinterpret_cast<char*>(mmapped_region_) + offset, n);
+  return s;
+}
+
+Status PosixMmapReadableFile::InvalidateCache(size_t offset, size_t length) {
+#ifndef OS_LINUX
+  return Status::OK();
+#else
+  // free OS pages
+  int ret = Fadvise(fd_, offset, length, POSIX_FADV_DONTNEED);
+  if (ret == 0) {
+    return Status::OK();
+  }
+  return IOError(filename_, errno);
+#endif
+}
+
+/*
+ * PosixMmapFile
+ *
+ * We preallocate up to an extra megabyte and use memcpy to append new
+ * data to the file.  This is safe since we either properly close the
+ * file before reading from it, or for log files, the reading code
+ * knows enough to skip zero suffixes.
+ */
+Status PosixMmapFile::UnmapCurrentRegion() {
+  TEST_KILL_RANDOM("PosixMmapFile::UnmapCurrentRegion:0", rocksdb_kill_odds);
+  if (base_ != nullptr) {
+    int munmap_status = munmap(base_, limit_ - base_);
+    if (munmap_status != 0) {
+      return IOError(filename_, munmap_status);
+    }
+    file_offset_ += limit_ - base_;
+    base_ = nullptr;
+    limit_ = nullptr;
+    last_sync_ = nullptr;
+    dst_ = nullptr;
+
+    // Increase the amount we map the next time, but capped at 1MB
+    if (map_size_ < (1 << 20)) {
+      map_size_ *= 2;
+    }
+  }
+  return Status::OK();
+}
+
+Status PosixMmapFile::MapNewRegion() {
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+  assert(base_ == nullptr);
+
+  TEST_KILL_RANDOM("PosixMmapFile::UnmapCurrentRegion:0", rocksdb_kill_odds);
+  // we can't fallocate with FALLOC_FL_KEEP_SIZE here
+  if (allow_fallocate_) {
+    IOSTATS_TIMER_GUARD(allocate_nanos);
+    int alloc_status = fallocate(fd_, 0, file_offset_, map_size_);
+    if (alloc_status != 0) {
+      // fallback to posix_fallocate
+      alloc_status = posix_fallocate(fd_, file_offset_, map_size_);
+    }
+    if (alloc_status != 0) {
+      return Status::IOError("Error allocating space to file : " + filename_ +
+                             "Error : " + strerror(alloc_status));
+    }
+  }
+
+  TEST_KILL_RANDOM("PosixMmapFile::Append:1", rocksdb_kill_odds);
+  void* ptr = mmap(nullptr, map_size_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_,
+                   file_offset_);
+  if (ptr == MAP_FAILED) {
+    return Status::IOError("MMap failed on " + filename_);
+  }
+  TEST_KILL_RANDOM("PosixMmapFile::Append:2", rocksdb_kill_odds);
+
+  base_ = reinterpret_cast<char*>(ptr);
+  limit_ = base_ + map_size_;
+  dst_ = base_;
+  last_sync_ = base_;
+  return Status::OK();
+#else
+  return Status::NotSupported("This platform doesn't support fallocate()");
+#endif
+}
+
+Status PosixMmapFile::Msync() {
+  if (dst_ == last_sync_) {
+    return Status::OK();
+  }
+  // Find the beginnings of the pages that contain the first and last
+  // bytes to be synced.
+  size_t p1 = TruncateToPageBoundary(last_sync_ - base_);
+  size_t p2 = TruncateToPageBoundary(dst_ - base_ - 1);
+  last_sync_ = dst_;
+  TEST_KILL_RANDOM("PosixMmapFile::Msync:0", rocksdb_kill_odds);
+  if (msync(base_ + p1, p2 - p1 + page_size_, MS_SYNC) < 0) {
+    return IOError(filename_, errno);
+  }
+  return Status::OK();
+}
+
+PosixMmapFile::PosixMmapFile(const std::string& fname, int fd, size_t page_size,
+                             const EnvOptions& options)
+    : filename_(fname),
+      fd_(fd),
+      page_size_(page_size),
+      map_size_(Roundup(65536, page_size)),
+      base_(nullptr),
+      limit_(nullptr),
+      dst_(nullptr),
+      last_sync_(nullptr),
+      file_offset_(0) {
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+  allow_fallocate_ = options.allow_fallocate;
+  fallocate_with_keep_size_ = options.fallocate_with_keep_size;
+#endif
+  assert((page_size & (page_size - 1)) == 0);
+  assert(options.use_mmap_writes);
+}
+
+PosixMmapFile::~PosixMmapFile() {
+  if (fd_ >= 0) {
+    PosixMmapFile::Close();
+  }
+}
+
+Status PosixMmapFile::Append(const Slice& data) {
+  const char* src = data.data();
+  size_t left = data.size();
+  while (left > 0) {
+    assert(base_ <= dst_);
+    assert(dst_ <= limit_);
+    size_t avail = limit_ - dst_;
+    if (avail == 0) {
+      Status s = UnmapCurrentRegion();
+      if (!s.ok()) {
+        return s;
+      }
+      s = MapNewRegion();
+      if (!s.ok()) {
+        return s;
+      }
+      TEST_KILL_RANDOM("PosixMmapFile::Append:0", rocksdb_kill_odds);
+    }
+
+    size_t n = (left <= avail) ? left : avail;
+    memcpy(dst_, src, n);
+    dst_ += n;
+    src += n;
+    left -= n;
+  }
+  return Status::OK();
+}
+
+Status PosixMmapFile::Close() {
+  Status s;
+  size_t unused = limit_ - dst_;
+
+  s = UnmapCurrentRegion();
+  if (!s.ok()) {
+    s = IOError(filename_, errno);
+  } else if (unused > 0) {
+    // Trim the extra space at the end of the file
+    if (ftruncate(fd_, file_offset_ - unused) < 0) {
+      s = IOError(filename_, errno);
+    }
+  }
+
+  if (close(fd_) < 0) {
+    if (s.ok()) {
+      s = IOError(filename_, errno);
+    }
+  }
+
+  fd_ = -1;
+  base_ = nullptr;
+  limit_ = nullptr;
+  return s;
+}
+
+Status PosixMmapFile::Flush() { return Status::OK(); }
+
+Status PosixMmapFile::Sync() {
+  if (fdatasync(fd_) < 0) {
+    return IOError(filename_, errno);
+  }
+
+  return Msync();
+}
+
+/**
+ * Flush data as well as metadata to stable storage.
+ */
+Status PosixMmapFile::Fsync() {
+  if (fsync(fd_) < 0) {
+    return IOError(filename_, errno);
+  }
+
+  return Msync();
+}
+
+/**
+ * Get the size of valid data in the file. This will not match the
+ * size that is returned from the filesystem because we use mmap
+ * to extend file by map_size every time.
+ */
+uint64_t PosixMmapFile::GetFileSize() {
+  size_t used = dst_ - base_;
+  return file_offset_ + used;
+}
+
+Status PosixMmapFile::InvalidateCache(size_t offset, size_t length) {
+#ifndef OS_LINUX
+  return Status::OK();
+#else
+  // free OS pages
+  int ret = Fadvise(fd_, offset, length, POSIX_FADV_DONTNEED);
+  if (ret == 0) {
+    return Status::OK();
+  }
+  return IOError(filename_, errno);
+#endif
+}
+
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+Status PosixMmapFile::Allocate(uint64_t offset, uint64_t len) {
+  assert(offset <= std::numeric_limits<off_t>::max());
+  assert(len <= std::numeric_limits<off_t>::max());
+  TEST_KILL_RANDOM("PosixMmapFile::Allocate:0", rocksdb_kill_odds);
+  int alloc_status = 0;
+  if (allow_fallocate_) {
+    alloc_status = fallocate(
+        fd_, fallocate_with_keep_size_ ? FALLOC_FL_KEEP_SIZE : 0,
+          static_cast<off_t>(offset), static_cast<off_t>(len));
+  }
+  if (alloc_status == 0) {
+    return Status::OK();
+  } else {
+    return IOError(filename_, errno);
+  }
+}
+#endif
+
+/*
  * PosixWritableFile
  *
  * Use posix write to write data to a file.
  */
 PosixWritableFile::PosixWritableFile(const std::string& fname, int fd,
-                                     const EnvOptions& options, NoHostFs* nohost)
-    : filename_(fname), fd_(fd), filesize_(0), nohost_(nohost) {
+                                     const EnvOptions& options, int nfd, NoHostFs* nohost)
+    : filename_(fname), fd_(fd), filesize_(0), nfd_(nfd), nohost_(nohost) {
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   allow_fallocate_ = options.allow_fallocate;
   fallocate_with_keep_size_ = options.fallocate_with_keep_size;
@@ -253,8 +590,9 @@ PosixWritableFile::~PosixWritableFile() {
 Status PosixWritableFile::Append(const Slice& data) {
   const char* src = data.data();
   size_t left = data.size();
+  size_t sum = 0; // NOHOST
   while (left != 0) {
-    ssize_t done = nohost_->Write(fd_, src, left);
+    ssize_t done = write(fd_, src, left);
     if (done < 0) {
       if (errno == EINTR) {
         continue;
@@ -263,13 +601,38 @@ Status PosixWritableFile::Append(const Slice& data) {
     }
     left -= done;
     src += done;
+    sum += done;
   }
+ // filesize_ += data.size();
+
+  // NOHOST
+  const char* nsrc = data.data();
+  size_t nleft = data.size();
+  size_t nsum = 0;
+  while (nleft != 0) {
+    ssize_t done = nohost_->Write(nfd_, nsrc, nleft);
+    if (done < 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+      return IOError(filename_, errno);
+    }
+    nleft -= done;
+    nsrc += done;
+    nsum += done;
+  }
+
+  if(sum != nsum)
+	  printf("PosixWritableFile::Append:: result value is not same:compare return value:[%zu, %zu]\n", sum, nsum);
   filesize_ += data.size();
+  // NOHOST
+
   return Status::OK();
 }
 
 Status PosixWritableFile::Close() {
   Status s;
+  Status ns; // NOHOST
 
   size_t block_size;
   size_t last_allocated_block;
@@ -300,27 +663,39 @@ Status PosixWritableFile::Close() {
 #endif
   }
 
-  if (nohost_->Close(fd_) < 0) {
+  if (close(fd_) < 0) {
     s = IOError(filename_, errno);
   }
   fd_ = -1;
-  return s;
+
+  // NOHOST
+  if (nohost_->Close(nfd_) < 0) {
+	ns = IOError(filename_, errno);
+  }
+  nfd_ = -1;
+
+  if(s != ns)
+	  printf("PosixWritableFile::Close:: result value is not same:compare return value:[%s, %s]\n",
+			  s.ToString().c_str(), ns.ToString().c_str());
+  // NOHOST
+
+  return ns;
 }
 
 // write out the cached data to the OS cache
 Status PosixWritableFile::Flush() { return Status::OK(); }
 
 Status PosixWritableFile::Sync() {
-/*  if (fdatasync(fd_) < 0) {
+  if (fdatasync(fd_) < 0) {
     return IOError(filename_, errno);
-  }*/
+  }
   return Status::OK();
 }
 
 Status PosixWritableFile::Fsync() {
-/*  if (fsync(fd_) < 0) {
+  if (fsync(fd_) < 0) {
     return IOError(filename_, errno);
-  }*/
+  }
   return Status::OK();
 }
 
@@ -342,13 +717,16 @@ Status PosixWritableFile::InvalidateCache(size_t offset, size_t length) {
 }
 
 #ifdef ROCKSDB_FALLOCATE_PRESENT
-Status PosixWritableFile::Allocate(off_t offset, off_t len) {
+Status PosixWritableFile::Allocate(uint64_t offset, uint64_t len) {
+  assert(offset <= std::numeric_limits<off_t>::max());
+  assert(len <= std::numeric_limits<off_t>::max());
   TEST_KILL_RANDOM("PosixWritableFile::Allocate:0", rocksdb_kill_odds);
   IOSTATS_TIMER_GUARD(allocate_nanos);
   int alloc_status = 0;
   if (allow_fallocate_) {
     alloc_status = fallocate(
-        fd_, fallocate_with_keep_size_ ? FALLOC_FL_KEEP_SIZE : 0, offset, len);
+        fd_, fallocate_with_keep_size_ ? FALLOC_FL_KEEP_SIZE : 0,
+        static_cast<off_t>(offset), static_cast<off_t>(len));
   }
   if (alloc_status == 0) {
     return Status::OK();
@@ -357,28 +735,29 @@ Status PosixWritableFile::Allocate(off_t offset, off_t len) {
   }
 }
 
-Status PosixWritableFile::RangeSync(off_t offset, off_t nbytes) {
-  /*if (sync_file_range(fd_, offset, nbytes, SYNC_FILE_RANGE_WRITE) == 0) {
+Status PosixWritableFile::RangeSync(uint64_t offset, uint64_t nbytes) {
+  assert(offset <= std::numeric_limits<off_t>::max());
+  assert(nbytes <= std::numeric_limits<off_t>::max());
+  if (sync_file_range(fd_, static_cast<off_t>(offset),
+      static_cast<off_t>(nbytes), SYNC_FILE_RANGE_WRITE) == 0) {
     return Status::OK();
   } else {
     return IOError(filename_, errno);
-  }*/
-  return Status::OK();
+  }
 }
 
 size_t PosixWritableFile::GetUniqueId(char* id, size_t max_size) const {
-  //return GetUniqueIdFromFile(fd_, id, max_size);
-  return 0;
+  return GetUniqueIdFromFile(fd_, id, max_size);
 }
 #endif
 
-PosixDirectory::~PosixDirectory() { nohost_->Close(fd_); }
+PosixDirectory::~PosixDirectory() { close(fd_);  nohost_->Close(nfd_);} // NOHOST
 
 Status PosixDirectory::Fsync() {
-/*  if (fsync(fd_) == -1) {
+  if (fsync(fd_) == -1) {
     return IOError("directory", errno);
-  }*/
+  }
   return Status::OK();
 }
 }  // namespace rocksdb
-//#endif
+#endif

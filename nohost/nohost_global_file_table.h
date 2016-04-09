@@ -11,12 +11,12 @@ namespace rocksdb{
 
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
 std::vector<std::string> split(const std::string &s, char delim);
-uint64_t GetCurrentTime();
+ssize_t GetCurrentTime();
 
 struct FileSegInfo{
-	uint64_t start_address;
-	uint64_t size;
-	FileSegInfo(uint64_t start_address_, uint64_t size_){
+	size_t start_address;
+	size_t size;
+	FileSegInfo(size_t start_address_, size_t size_){
 		this->start_address =start_address_;
 		this->size =size_;
 	}
@@ -24,7 +24,7 @@ struct FileSegInfo{
 
 class Node{
 public:
-	Node(std::string name_, bool isfile_, Node* parent_) :
+	Node(std::string* name_, bool isfile_, Node* parent_) :
 		children(NULL), file_info(NULL){
 		this->name =name_;
 		this->isfile = isfile_;
@@ -38,17 +38,16 @@ public:
 	~Node(){
 		if(isfile) delete file_info;
 		else delete children;
+		delete name;
 	}
 	Node* parent;
-	std::string name;
+	std::string* name;
 	bool isfile;
-	uint64_t last_modified_time;
+	ssize_t last_modified_time;
 	std::list<Node*>* children;
 	std::vector<FileSegInfo*>* file_info;
 	int link_count;
-	uint64_t GetSize();
-	static uint64_t page_size;
-	static std::vector<unsigned char>* free_page_bitmap;
+	long int GetSize();
 	bool lock;
 };
 
@@ -56,34 +55,13 @@ class GlobalFileTableTree{
 public:
 	std::vector<unsigned char>* free_page_bitmap; // until now, it associates a char with a page
 
-	GlobalFileTableTree(uint64_t page_size_){
+	GlobalFileTableTree(size_t page_size_){
 		free_page_bitmap = new std::vector<unsigned char>();
 		free_page_bitmap->push_back(0);
-		root = new Node("", false, NULL);
+		root = new Node(new std::string(""), false, NULL);
+		cwd = "/";
 		page_size = page_size_;
 		CreateDir("tmp");
-		CreateDir("rocksdbtest-1000");
-		CreateDir("db_test");
-		CreateFile("LOG");
-		CreateDir("usr");
-		CreateDir("var");
-		CreateDir("sbin");
-		CreateDir("srv");
-		CreateDir("sys");
-		CreateDir("proc");
-		CreateDir("root");
-		CreateDir("run");
-		CreateDir("media");
-		CreateDir("mnt");
-		CreateDir("opt");
-		CreateDir("lib32");
-		CreateDir("lib64");
-		CreateDir("dev");
-		CreateDir("etc");
-		CreateDir("home");
-		CreateDir("cdrom");
-		CreateDir("boot");
-		CreateDir("bin");
 	}
 	~GlobalFileTableTree(){
 		delete free_page_bitmap;
@@ -93,8 +71,8 @@ public:
 	Node* CreateDir(std::string name);
 	Node* CreateFile(std::string name);
 	Node* Link(std::string src, std::string target);
-	bool DeleteDir(std::string name);
-	bool DeleteFile(std::string name);
+	int DeleteDir(std::string name);
+	int DeleteFile(std::string name);
 	int Lock(std::string name, bool lock);
 
 	Node* GetNode(std::string name);
@@ -106,9 +84,11 @@ public:
 
 	bool print(Node* cur, std::string indent);
 	void printAll();
+
+	std::string cwd;
 private:
 	Node* root;
-	uint64_t page_size;
+	size_t page_size;
 
 
 };
