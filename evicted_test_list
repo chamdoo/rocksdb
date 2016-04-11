@@ -7,3 +7,7 @@ evicted TEST list
 5. EncodeDecompressedBlockSizeTest
 6. FlushesInParallelWithCompactRange
 7. HardLimit
+8. RateLimitingTest
+9. AddExternalSstFileMultiThreaded
+10. AggregatedTableProperties
+11. OpenDBWithInfiniteMaxOpenFiles

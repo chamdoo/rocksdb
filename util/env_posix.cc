@@ -679,11 +679,11 @@ class PosixEnv : public Env {
       return Status::OK();
     }
 
-    char the_path[256];
+ /*   char the_path[256];
     char* ret = getcwd(the_path, 256);
     if (ret == nullptr) {
       return Status::IOError(strerror(errno));
-    }
+    }*/
     std::string nret = nohost->GetAbsolutePath(); //NOHOST
 
     *output_path = nret;

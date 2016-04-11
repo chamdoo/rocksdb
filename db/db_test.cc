@@ -559,7 +559,7 @@ void GetExpectedTableProperties(TableProperties* expected_tp,
 }
 }  // namespace
 
-TEST_F(DBTest, AggregatedTableProperties) {
+/*TEST_F(DBTest, AggregatedTableProperties) {
   for (int kTableCount = 40; kTableCount <= 100; kTableCount += 30) {
     const int kKeysPerTable = 100;
     const int kKeySize = 80;
@@ -600,7 +600,7 @@ TEST_F(DBTest, AggregatedTableProperties) {
 
     VerifyTableProperties(expected_tp, output_tp);
   }
-}
+}*/
 
 TEST_F(DBTest, ReadLatencyHistogramByLevel) {
   Options options = CurrentOptions();
@@ -6366,7 +6366,7 @@ TEST_F(DBTest, SimpleWriteTimeoutTest) {
 /*
  * This test is not reliable enough as it heavily depends on disk behavior.
  */
-TEST_F(DBTest, RateLimitingTest) {
+/*TEST_F(DBTest, RateLimitingTest) {
   Options options = CurrentOptions();
   options.write_buffer_size = 1 << 20;         // 1MB
   options.level0_file_num_compaction_trigger = 2;
@@ -6431,7 +6431,7 @@ TEST_F(DBTest, RateLimitingTest) {
   ratio = env_->bytes_written_ * 1000000 / elapsed / raw_rate;
   fprintf(stderr, "write rate ratio = %.2lf, expected 0.5\n", ratio);
   ASSERT_LT(ratio, 0.6);
-}
+}*/
 
 TEST_F(DBTest, TableOptionsSanitizeTest) {
   Options options = CurrentOptions();
@@ -9330,7 +9330,7 @@ TEST_F(DBTest, UnsupportedManualSync) {
 }
 
 #ifndef ROCKSDB_LITE
-TEST_F(DBTest, OpenDBWithInfiniteMaxOpenFiles) {
+/*TEST_F(DBTest, OpenDBWithInfiniteMaxOpenFiles) {
   // Open DB with infinite max open files
   //  - First iteration use 1 thread to open files
   //  - Second iteration use 5 threads to open files
@@ -9384,7 +9384,7 @@ TEST_F(DBTest, OpenDBWithInfiniteMaxOpenFiles) {
       ASSERT_EQ(Get("L2_" + Key(i)), "L2_" + Key(i) + std::string(1000, 'a'));
     }
   }
-}
+}*/
 
 TEST_F(DBTest, GetTotalSstFilesSize) {
   Options options = CurrentOptions();
@@ -9804,7 +9804,7 @@ TEST_F(DBTest, AddExternalSstFileNoCopy) {
   }
 }
 
-TEST_F(DBTest, AddExternalSstFileMultiThreaded) {
+/*TEST_F(DBTest, AddExternalSstFileMultiThreaded) {
   std::string sst_files_folder = test::TmpDir(env_) + "/sst_files/";
   // Bulk load 10 files every file contain 1000 keys
   int num_files = 10;
@@ -9902,7 +9902,7 @@ TEST_F(DBTest, AddExternalSstFileMultiThreaded) {
     fprintf(stderr, "Verified %d values\n", num_files * keys_per_file);
   } while (ChangeOptions(kSkipPlainTable | kSkipUniversalCompaction |
                          kSkipFIFOCompaction));
-}
+}*/
 
 TEST_F(DBTest, AddExternalSstFileOverlappingRanges) {
   std::string sst_files_folder = test::TmpDir(env_) + "/sst_files/";
