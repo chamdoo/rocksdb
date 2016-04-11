@@ -29,15 +29,14 @@ static Status IOError(const std::string& context, int err_number) {
 class PosixSequentialFile : public SequentialFile {
  private:
   std::string filename_;
-  FILE* file_;
+//  FILE* file_; // NOHOST
   int fd_;
   bool use_os_buffer_;
-  int nfd_; // NOHOST
   NoHostFs* nohost_; // NOHOST
 
  public:
-  PosixSequentialFile(const std::string& fname, FILE* f,
-                      const EnvOptions& options, int nfd, NoHostFs* nohost); // NOHOST
+  PosixSequentialFile(const std::string& fname, int fd,
+                      const EnvOptions& options, NoHostFs* nohost); // NOHOST
   virtual ~PosixSequentialFile();
 
   virtual Status Read(size_t n, Slice* result, char* scratch) override;
@@ -50,12 +49,11 @@ class PosixRandomAccessFile : public RandomAccessFile {
   std::string filename_;
   int fd_;
   bool use_os_buffer_;
-  int nfd_; // NOHOST
   NoHostFs* nohost_; // NOHOST
 
  public:
   PosixRandomAccessFile(const std::string& fname, int fd,
-                        const EnvOptions& options, int nfd, NoHostFs* nohost); // NOHOST
+                        const EnvOptions& options, NoHostFs* nohost); // NOHOST
   virtual ~PosixRandomAccessFile();
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
@@ -72,7 +70,6 @@ class PosixWritableFile : public WritableFile {
   const std::string filename_;
   int fd_;
   uint64_t filesize_;
-  int nfd_; // NOHOST
   NoHostFs* nohost_; // NOHOST
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   bool allow_fallocate_;
@@ -81,7 +78,7 @@ class PosixWritableFile : public WritableFile {
 
  public:
   PosixWritableFile(const std::string& fname, int fd,
-                    const EnvOptions& options, int nfd, NoHostFs* nohost);
+                    const EnvOptions& options, NoHostFs* nohost);
   ~PosixWritableFile();
 
   // Means Close() will properly take care of truncate
@@ -96,8 +93,8 @@ class PosixWritableFile : public WritableFile {
   virtual uint64_t GetFileSize() override;
   virtual Status InvalidateCache(size_t offset, size_t length) override;
 #ifdef ROCKSDB_FALLOCATE_PRESENT
-  virtual Status Allocate(uint64_t offset, uint64_t len) override;
-  virtual Status RangeSync(uint64_t offset, uint64_t nbytes) override;
+  virtual Status Allocate(off_t offset, off_t len) override;
+  virtual Status RangeSync(off_t offset, off_t nbytes) override;
   virtual size_t GetUniqueId(char* id, size_t max_size) const override;
 #endif
 };
@@ -163,19 +160,18 @@ class PosixMmapFile : public WritableFile {
   virtual uint64_t GetFileSize() override;
   virtual Status InvalidateCache(size_t offset, size_t length) override;
 #ifdef ROCKSDB_FALLOCATE_PRESENT
-  virtual Status Allocate(uint64_t offset, uint64_t len) override;
+  virtual Status Allocate(off_t offset, off_t len) override;
 #endif
 };
 
 class PosixDirectory : public Directory {
  public:
-  explicit PosixDirectory(int fd, int nfd, NoHostFs* nohost) : fd_(fd), nfd_(nfd), nohost_(nohost) {} // NOHOST
+  explicit PosixDirectory(int fd, NoHostFs* nohost) : fd_(fd),nohost_(nohost) {} // NOHOST
   ~PosixDirectory();
   virtual Status Fsync() override;
 
  private:
   int fd_;
-  int nfd_; // NOHOST
   NoHostFs* nohost_; // NOHOST
 };
 

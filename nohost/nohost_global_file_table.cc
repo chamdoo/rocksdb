@@ -8,7 +8,7 @@
 namespace rocksdb{
 
 // Node implementation
-long int Node::GetSize(){
+unsigned long int Node::GetSize(){
 	if(isfile){
 		size_t total = 0;
 		for(size_t i = 0; i < file_info->size(); i++){
@@ -343,7 +343,7 @@ std::vector<std::string> split(const std::string &s, char delim) {
     return elems;
 }
 
-ssize_t GetCurrentTime(){
+long int GetCurrentTime(){
 	struct timeval current;
 	gettimeofday(&current, NULL);
 

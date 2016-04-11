@@ -11,7 +11,7 @@ namespace rocksdb{
 
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
 std::vector<std::string> split(const std::string &s, char delim);
-ssize_t GetCurrentTime();
+long int GetCurrentTime();
 
 struct FileSegInfo{
 	size_t start_address;
@@ -43,11 +43,11 @@ public:
 	Node* parent;
 	std::string* name;
 	bool isfile;
-	ssize_t last_modified_time;
+	long int last_modified_time;
 	std::list<Node*>* children;
 	std::vector<FileSegInfo*>* file_info;
 	int link_count;
-	long int GetSize();
+	unsigned long int GetSize();
 	bool lock;
 };
 
@@ -62,6 +62,11 @@ public:
 		cwd = "/";
 		page_size = page_size_;
 		CreateDir("tmp");
+        CreateDir("proc");
+        CreateDir("proc/sys");
+        CreateDir("proc/sys/kernel");
+        CreateDir("proc/sys/kernel/random");
+        CreateFile("proc/sys/kernel/random/uuid");
 	}
 	~GlobalFileTableTree(){
 		delete free_page_bitmap;

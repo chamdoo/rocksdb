@@ -18,10 +18,13 @@ struct OpenFileEntry{
 	Node* node;
 	off_t r_offset;
 	off_t w_offset;
+	std::list<Node*>::iterator entry_list_iter;
 	OpenFileEntry(Node* node_, off_t r_offset_, off_t w_offset_){
 		this->node =node_;
 		this->r_offset =r_offset_;
 		this->w_offset =w_offset_;
+		if(!node->isfile)
+			this->entry_list_iter = node->children->begin();
 	}
 };
 
@@ -36,10 +39,12 @@ public:
 
 	NoHostFs(size_t assign_size){
 		global_file_tree = new GlobalFileTableTree(assign_size);
-
 		open_file_table = new std::vector<OpenFileEntry*>();
 		flash_fd = open("flash.db", O_CREAT | O_RDWR | O_TRUNC, 0666);
 		this->page_size = assign_size;
+        int fd = Open("/proc/sys/kernel/random/uuid", 'w');
+        Write(fd, "8691b88d-c84f-4bed-9d7b-7f3e08fe60f2", sizeof("8691b88d-c84f-4bed-9d7b-7f3e08fe60f2"));
+        Close(fd);
 	}
 	~NoHostFs(){
 		delete global_file_tree;
@@ -56,7 +61,7 @@ public:
 	long int Read(int fd, char* buf, size_t size);
 	long int ReadHelper(int fd, char* buf, size_t size);
 	size_t SequentialRead(int fd, char* buf, size_t size);
-	long int Pread(int fd, char* buf, uint64_t size, off_t absolute_offset);
+	long int Pread(int fd, char* buf, uint64_t size, uint64_t absolute_offset);
 
 
 	int Close(int fd);

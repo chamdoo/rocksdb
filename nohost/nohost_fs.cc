@@ -4,17 +4,18 @@
 namespace rocksdb{
 
 int NoHostFs::Lock(std::string name, bool lock){
+	//printf("NoHostFs::Lock::name:%s\n", name.c_str());
 	return global_file_tree->Lock(name, lock);
 }
 
 int NoHostFs::Close(int fd){
 	if(fd < 0 || (int)open_file_table->size() <= fd){
-		errno = EBADF; // Bad file number
+		//errno = EBADF; // Bad file number
 		return -1;
 	}
 	OpenFileEntry* entry = open_file_table->at(fd);
 	if(entry == NULL){
-		errno = EBADF; // Bad file number
+		//errno = EBADF; // Bad file number
 		return -1;
 	}
 	delete entry;
@@ -23,6 +24,7 @@ int NoHostFs::Close(int fd){
 	return 0;
 }
 int NoHostFs::Access(std::string name){
+	//printf("NoHostFs::Access::name:%s\n", name.c_str());
 	Node* node = global_file_tree->GetNode(name);
 	if(node == NULL){
 		errno = ENOENT; // No such file or directory
@@ -31,6 +33,7 @@ int NoHostFs::Access(std::string name){
 	return 0;
 }
 int NoHostFs::Rename(std::string old_name, std::string name){
+	//printf("NoHostFs::Rename::%s, %s\n", old_name.c_str(), name.c_str());
 
 	Node* old_node = global_file_tree->GetNode(old_name);
 	std::vector<std::string> path_list = split(name, '/');
@@ -58,6 +61,7 @@ int NoHostFs::Rename(std::string old_name, std::string name){
 
 }
 Node* NoHostFs::ReadDir(int fd){
+	//printf("NoHostFs::ReadDir::name:%d\n", fd);
 	if(fd < 0 || (int)open_file_table->size() <= fd){
 		errno = EBADF; // Bad file number
 		return NULL;
@@ -67,31 +71,31 @@ Node* NoHostFs::ReadDir(int fd){
 		errno = EBADF; // Bad file number
 		return NULL;
 	}
-	ssize_t loop_count = 0;
 	if(entry->node->isfile){
 		errno = ENOTDIR; // not a directory
 		return NULL;
 	}
-	std::list<Node*>::iterator iter = entry->node->children->begin();
 
-	while(loop_count < entry->r_offset){
-		iter++;
-		loop_count++;
-	}
-	entry->r_offset++;
-	if(iter == entry->node->children->end())
-		return NULL;
+	Node* ret = NULL;
+	if(entry->entry_list_iter == entry->node->children->end())
+		return ret;
+	else
+		ret = *(entry->entry_list_iter);
 
-	return *iter;
+	entry->entry_list_iter++;
+
+	return ret;
 }
 int NoHostFs::DeleteFile(std::string name){
+	//printf("NoHostFs::DeleteFile::name:%s\n", name.c_str());
 	return global_file_tree->DeleteFile(name);
 }
 int NoHostFs::DeleteDir(std::string name){
+	//printf("NoHostFs::DeleteDir::name:%s\n", name.c_str());
 	return global_file_tree->DeleteDir(name);
 }
 int NoHostFs::CreateDir(std::string name){
-	//printf("Enter NoHostFs::CreateDir(%s)\n", name.c_str());
+//	printf("Enter NoHostFs::CreateDir(%s)\n", name.c_str());
 	if(global_file_tree->CreateDir(name) == NULL)
 		return -1;
 	return 0;
@@ -103,6 +107,7 @@ int NoHostFs::CreateFile(std::string name){
 	return 0;
 }
 bool NoHostFs::DirExists(std::string name){
+	//printf("NoHostFs::DirExists::name:%s\n", name.c_str());
 	Node* node = global_file_tree->GetNode(name);
 	if(node == NULL){
 		errno = ENOENT; // No such file or directory
@@ -115,6 +120,7 @@ bool NoHostFs::DirExists(std::string name){
 	return true;
 }
 int NoHostFs::GetFileSize(std::string name){
+	//printf("NoHostFs::GetFileSize::name:%s\n", name.c_str());
 	Node* node = global_file_tree->GetNode(name);
 	if(node == NULL){
 		errno = ENOENT; // No such file or directory
@@ -123,6 +129,7 @@ int NoHostFs::GetFileSize(std::string name){
 	return node->GetSize();
 }
 long int NoHostFs::GetFileModificationTime(std::string name){
+	//printf("NoHostFs::GetFileModificationTime::name:%s\n", name.c_str());
 	Node* node = global_file_tree->GetNode(name);
 	if(node == NULL){
 		errno = ENOENT; // No such file or directory
@@ -137,6 +144,7 @@ bool NoHostFs::Link(std::string src, std::string target){
 	return true;
 }
 bool NoHostFs::IsEof(int fd){
+	//printf("NoHostFs::IsEof::fd:%d\n", fd);
 	if(fd < 0 || (int)open_file_table->size() <= fd){
 		errno = EBADF; // Bad file number
 		return -1;
@@ -146,12 +154,13 @@ bool NoHostFs::IsEof(int fd){
 		errno = EBADF; // Bad file number
 		return false;
 	}
-	if(entry->r_offset == entry->node->GetSize())
+	if((size_t)(entry->r_offset) == entry->node->GetSize())
 		return true;
 	else
 		return false;
 }
 off_t NoHostFs::Lseek(int fd, off_t n){
+	//printf("NoHostFs::Lseek::name:%d\n", fd);
 	if(fd < 0 || (int)open_file_table->size() <= fd){
 		errno = EBADF; // Bad file number
 		return -1;
@@ -170,6 +179,7 @@ off_t NoHostFs::Lseek(int fd, off_t n){
 
 
 int NoHostFs::Open(std::string name, char type){
+	//printf("NoHostFs::Open::name:%s\n", name.c_str());
 	Node* ret = NULL;
 	size_t start_address;
 
@@ -257,6 +267,8 @@ long int NoHostFs::Write(int fd, const char* buf, size_t size){
 	}
 
 	entry->node->last_modified_time = GetCurrentTime();
+	//printf("NoHostFs::Write::name:%s fd:%d, buffer_size:%zu ,written_size=%zu, start_offset=%zu\n",
+	//		entry->node->name->c_str(), fd, size, wsize, (finfo->start_address +offset));
 	return wsize;
 }
 
@@ -301,6 +313,8 @@ long int NoHostFs::Write(int fd, char* buf, size_t size){
 	}
 
 	entry->node->last_modified_time = GetCurrentTime();
+	//printf("NoHostFs::Write::name:%s fd:%d, buffer_size:%zu ,written_size=%zu, start_offset=%zu\n",
+//			entry->node->name->c_str(), fd, size, wsize, (finfo->start_address +offset));
 	return wsize;
 }
 
@@ -333,7 +347,7 @@ size_t NoHostFs::SequentialRead(int fd, char* buf, size_t size){
         tmp += done;
 	}
 
-	printf("NoHostFs::SequentialRead:: fd:%d, buffer_size:%zu ,readed_size=%zu\n", fd, size, sum);
+	//printf("NoHostFs::SequentialRead:: fd:%d, buffer_size:%zu ,readed_size=%zu\n", fd, size, sum);
 	return sum;
 }
 
@@ -366,7 +380,7 @@ long int NoHostFs::ReadHelper(int fd, char* buf, size_t size){
 
 }
 
-long int NoHostFs::Pread(int fd, char* buf, size_t size, off_t absolute_offset){
+long int NoHostFs::Pread(int fd, char* buf, size_t size, uint64_t absolute_offset){
 	if(fd < 0 || (int)open_file_table->size() <= fd){
 		errno = EBADF; // Bad file number
 		return -1;
@@ -378,9 +392,10 @@ long int NoHostFs::Pread(int fd, char* buf, size_t size, off_t absolute_offset){
 		errno = EBADF; // Bad file number
 		return -1;
 	}
-	size_t viable_size = entry->node->GetSize() - absolute_offset;
+	uint64_t viable_size = entry->node->GetSize() - absolute_offset;
 	if(viable_size > size)
 		viable_size = size;
+	//printf("viable size = total file size:%zu - bsolute_offset:%zu\n", entry->node->GetSize(), absolute_offset);
 
 
 	size_t start_page = absolute_offset / page_size;
@@ -388,19 +403,27 @@ long int NoHostFs::Pread(int fd, char* buf, size_t size, off_t absolute_offset){
 	size_t offset = absolute_offset % page_size;
 	if(last_page < start_page) return 0;
 
+//	printf("start_page=%zu, last_page=%zu, offset=%zu, page_size=%zu \n", start_page, last_page, offset, page_size);
+
 
 	finfo = entry->node->file_info->at(start_page);
-	rsize = lseek(flash_fd, (size_t)(finfo->start_address + offset), SEEK_SET);
+
+	rsize = lseek(flash_fd, (off_t)(finfo->start_address + offset), SEEK_SET);
 	if(rsize < 0){ std::cout << "lseek error\n"; return -1; }
 	if(page_size - offset < viable_size){
-		rsize = read(flash_fd, buf, page_size - offset);
-		if(rsize < 0){ std::cout << "read error\n"; return rsize; }
+		rsize = read(flash_fd, buf, (size_t)(page_size - offset));
+		if(rsize < 0){
+			return rsize;
+		}
 	}
 	else{
 		rsize = read(flash_fd, buf, viable_size);
-		if(rsize < 0){ std::cout << "read error\n"; return rsize; }
+		if(rsize < 0){
+			return rsize;
+		}
 	}
 
+	////printf("NoHostFs::Pread:: read(%d, %s, %zu), start_offset=%zu\n", flash_fd, buf, viable_size, (finfo->start_address + offset));
 	return rsize;
 }
 
@@ -441,12 +464,15 @@ long int NoHostFs::Read(int fd, char* buf, size_t size){
 		entry->r_offset += (off_t)rsize;
 	}
 
+
+	//printf("NoHostFs::Read:: fd:%d, buffer_size:%zu ,readed_size=%zu\n", fd, size, rsize);
 	return rsize;
 }
 
 size_t NoHostFs::GetFreeBlockAddress(){
 	size_t i;
 
+	//printf("NoHostFs::GetFreeBlockAddress\n");
 	for(i = 0; i < global_file_tree->free_page_bitmap->size(); i++)
 		if(global_file_tree->free_page_bitmap->at(i) == 0) break;
 

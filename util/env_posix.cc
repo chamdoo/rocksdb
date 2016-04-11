@@ -1,4 +1,4 @@
-//  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+//  Copyright (c) 2013, Facebook, Inc.  All rights reserved.
 //  This source code is licensed under the BSD-style license found in the
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
@@ -6,6 +6,7 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -42,17 +43,15 @@
 #include "rocksdb/slice.h"
 #include "util/coding.h"
 #include "util/io_posix.h"
-#include "util/thread_posix.h"
 #include "util/iostats_context_imp.h"
 #include "util/logging.h"
 #include "util/posix_logger.h"
-#include "util/random.h"
 #include "util/string_util.h"
 #include "util/sync_point.h"
-#include "util/thread_local.h"
 #include "util/thread_status_updater.h"
+#include "util/thread_status_util.h"
 
-#include <sys/syscall.h>
+#include <sys/syscall.h> // NOHOST
 #if !defined(TMPFS_MAGIC)
 #define TMPFS_MAGIC 0x01021994
 #endif
@@ -61,6 +60,11 @@
 #endif
 #if !defined(EXT4_SUPER_MAGIC)
 #define EXT4_SUPER_MAGIC 0xEF53
+#endif
+
+
+#define NOHOST
+#ifdef NOHOST
 #endif
 
 namespace rocksdb {
@@ -75,7 +79,7 @@ ThreadStatusUpdater* CreateThreadStatusUpdater() {
 static std::set<std::string> lockedFiles;
 static port::Mutex mutex_lockedFiles;
 
-static int LockOrUnlock(const std::string& fname, int fd, bool lock, int nfd, NoHostFs* nohost) { // NOHOST add nfd and nohost
+static int LockOrUnlock(const std::string& fname, int fd, bool lock, NoHostFs* nohost) { // NOHOST add nfd and nohost
   mutex_lockedFiles.Lock();
   if (lock) {
     // If it already exists in the lockedFiles set, then it is already locked,
@@ -97,33 +101,34 @@ static int LockOrUnlock(const std::string& fname, int fd, bool lock, int nfd, No
       return -1;
     }
   }
-  int nvalue = nohost->Lock(fname, lock); // NOHOST
+  int value = nohost->Lock(fname, lock); // NOHOST
   errno = 0;
-  struct flock f;
+/*  struct flock f;
   memset(&f, 0, sizeof(f));
   f.l_type = (lock ? F_WRLCK : F_UNLCK);
   f.l_whence = SEEK_SET;
   f.l_start = 0;
   f.l_len = 0;        // Lock/unlock entire file
-  int value = fcntl(fd, F_SETLK, &f);
+  int value = fcntl(fd, F_SETLK, &f);*/
   if (value == -1 && lock) {
     // if there is an error in locking, then remove the pathname from lockedfiles
     lockedFiles.erase(fname);
   }
   mutex_lockedFiles.Unlock();
 
-#ifdef NOHOST
-  /* TODO: lock/unlock support */
-#endif
+  return value;
+}
 
-  if(value != nvalue) printf("LockOrUnlock:: return value is not same [%d, %d]\n", value, nvalue); // NOHOST
-  return nvalue;
+void PthreadCall(const char* label, int result) {
+  if (result != 0) {
+    fprintf(stderr, "pthread %s: %s\n", label, strerror(result));
+    abort();
+  }
 }
 
 class PosixFileLock : public FileLock {
  public:
   int fd_;
-  int nfd_; // NOHOST
   std::string filename;
 };
 
@@ -146,230 +151,221 @@ class PosixEnv : public Env {
   void SetFD_CLOEXEC(int fd, const EnvOptions* options) {
     if ((options == nullptr || options->set_fd_cloexec) && fd > 0) {
       fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
+#ifdef NOHOST
+	  /* TODO: don't understand */
+#endif
     }
   }
 
   virtual Status NewSequentialFile(const std::string& fname,
-                                   unique_ptr<SequentialFile>* result,
-                                   const EnvOptions& options) override {
-		printf("Enter the NewSequentialFile(string %s)\n", fname.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-    result->reset();
-    FILE* f = nullptr;
-    int nfd = -1; // NOHOST
+                                     unique_ptr<SequentialFile>* result,
+                                     const EnvOptions& options) override {
+  		//printf("Enter the NewSequentialFile(string %s)\n", fname.c_str());
+  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+      result->reset();
+      int fd = -1; // NOHOST
 
-    do {
-      IOSTATS_TIMER_GUARD(open_nanos);
-      nfd = nohost->Open(fname.c_str(), 'r'); //NOHOST
-      f = fopen(fname.c_str(), "r");
-    } while (f == nullptr && errno == EINTR);
-    if (f == nullptr) {
-      *result = nullptr;
-		printf("Exit:Fail the NewSequentialFile(string %s)\n", fname.c_str());
-      return IOError(fname, errno);
-    } else {
-      int fd = fileno(f);
-      SetFD_CLOEXEC(fd, &options);
-      result->reset(new PosixSequentialFile(fname, f, options, nfd, nohost)); //NOHOST
-		printf("Exit:Success the NewSequentialFile(string %s)\n", fname.c_str());
-      return Status::OK();
+      do {
+        IOSTATS_TIMER_GUARD(open_nanos);
+        fd = nohost->Open(fname.c_str(), 'r'); //NOHOST
+      } while (fd < -1 && errno == EINTR);
+      if (fd < -1) {
+        *result = nullptr;
+  		//printf("Exit:Fail the NewSequentialFile(string %s)\n", fname.c_str());
+        return IOError(fname, errno);
+      } else {
+        result->reset(new PosixSequentialFile(fname, fd, options, nohost)); //NOHOST
+  		//printf("Exit:Success the NewSequentialFile(string %s)\n", fname.c_str());
+        return Status::OK();
+      }
     }
-  }
 
   virtual Status NewRandomAccessFile(const std::string& fname,
-                                     unique_ptr<RandomAccessFile>* result,
-                                     const EnvOptions& options) override {
-		printf("Enter the NewRandomAccessFile(string %s)\n", fname.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-    result->reset();
-    Status s;
-    int fd;
-    int nfd; //NOHOST
-    {
-      IOSTATS_TIMER_GUARD(open_nanos);
-      fd = open(fname.c_str(), O_RDONLY);
-      nfd = nohost->Open(fname.c_str(), 'r'); //NOHOST
-    }
-    SetFD_CLOEXEC(fd, &options);
-    if (fd < 0) {
-		printf("Exit:Fail the NewRandomAccessFile(string %s)\n", fname.c_str());
-      s = IOError(fname, errno);
-    } else if (options.use_mmap_reads && sizeof(void*) >= 8) {
-      // Use of mmap for random reads has been removed because it
-      // kills performance when storage is fast.
-      // Use mmap when virtual address-space is plentiful.
-      uint64_t size;
-      s = GetFileSize(fname, &size);
-      if (s.ok()) {
-        void* base = mmap(nullptr, size, PROT_READ, MAP_SHARED, fd, 0);
-        if (base != MAP_FAILED) {
-          result->reset(new PosixMmapReadableFile(fd, fname, base,
-                                                  size, options));
-        } else {
-          s = IOError(fname, errno);
-        }
+                                       unique_ptr<RandomAccessFile>* result,
+                                       const EnvOptions& options) override {
+  		//printf("Enter the NewRandomAccessFile(string %s)\n", fname.c_str());
+  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+      result->reset();
+      Status s;
+      int fd;
+      {
+        IOSTATS_TIMER_GUARD(open_nanos);
+        fd = nohost->Open(fname.c_str(), 'r'); //NOHOST
       }
-      close(fd);
-      nohost->Close(nfd); // NOHOST
-    } else {
-		printf("Exit:Success the NewRandomAccessFile(string %s)\n", fname.c_str());
-      result->reset(new PosixRandomAccessFile(fname, fd, options, nfd, nohost)); // NOHOST
+      if (fd < 0) {
+  		//printf("Exit:Fail the NewRandomAccessFile(string %s)\n", fname.c_str());
+        s = IOError(fname, errno);
+      }/* else if (options.use_mmap_reads && sizeof(void*) >= 8) {
+        // Use of mmap for random reads has been removed because it
+        // kills performance when storage is fast.
+        // Use mmap when virtual address-space is plentiful.
+        uint64_t size;
+        s = GetFileSize(fname, &size);
+        if (s.ok()) {
+          void* base = mmap(nullptr, size, PROT_READ, MAP_SHARED, fd, 0);
+          if (base != MAP_FAILED) {
+            result->reset(new PosixMmapReadableFile(fd, fname, base,
+                                                    size, options));
+          } else {
+            s = IOError(fname, errno);
+          }
+        }
+        close(fd);
+        nohost->Close(nfd); // NOHOST
+      }*/ else {
+  		//printf("Exit:Success the NewRandomAccessFile(string %s)\n", fname.c_str());
+        result->reset(new PosixRandomAccessFile(fname, fd, options, nohost)); // NOHOST
+      }
+      return s;
     }
-    return s;
-  }
 
   virtual Status NewWritableFile(const std::string& fname,
-                                 unique_ptr<WritableFile>* result,
-                                 const EnvOptions& options) override {
-		printf("Enter the NewWritableFile(string %s)\n", fname.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-    result->reset();
-    Status s;
-    int fd = -1;
-    int nfd; //NOHOST
-    do {
-      IOSTATS_TIMER_GUARD(open_nanos);
-      nfd = nohost->Open(fname.c_str(), 'w'); // NOHOST
-      fd = open(fname.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0644);
-    } while (fd < 0 && errno == EINTR);
-    if (fd < 0) {
-		printf("Exit:Fail the NewWritableFile(string %s)\n", fname.c_str());
-      s = IOError(fname, errno);
-    } else {
-      SetFD_CLOEXEC(fd, &options);
-      if (options.use_mmap_writes) {
-        if (!checkedDiskForMmap_) {
-          // this will be executed once in the program's lifetime.
-          // do not use mmapWrite on non ext-3/xfs/tmpfs systems.
-          if (!SupportsFastAllocate(fname)) {
-            forceMmapOff = true;
-          }
-          checkedDiskForMmap_ = true;
-        }
-      }
-      if (options.use_mmap_writes && !forceMmapOff) {
-        result->reset(new PosixMmapFile(fname, fd, page_size_, options));
-      } else {
-        // disable mmap writes
-        EnvOptions no_mmap_writes_options = options;
-        no_mmap_writes_options.use_mmap_writes = false;
-
-		printf("Exit:Success the NewWritableFile(string %s)\n", fname.c_str());
-        result->reset(new PosixWritableFile(fname, fd, no_mmap_writes_options, nfd, nohost)); // NOHOST
-      }
-    }
-    return s;
-  }
-
-  virtual Status ReuseWritableFile(const std::string& fname,
-                                   const std::string& old_fname,
                                    unique_ptr<WritableFile>* result,
                                    const EnvOptions& options) override {
-		printf("Enter the ReuseWritableFile(string %s)\n", fname.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-    result->reset();
-    Status s;
-    Status ns; // NOHOST
-    int fd = -1;
-    int nfd = -1; // NOHOST
-    do {
-      IOSTATS_TIMER_GUARD(open_nanos);
-      fd = open(old_fname.c_str(), O_RDWR, 0644);
-      nfd = nohost->Open(old_fname.c_str(), 'a'); //NOHOST
-    } while (fd < 0 && errno == EINTR);
-    if (fd < 0) {
-      s = IOError(fname, errno);
-    } else {
-      SetFD_CLOEXEC(fd, &options);
-      // rename into place
-      if (rename(old_fname.c_str(), fname.c_str()) != 0) {
-        Status r = IOError(old_fname, errno);
-        close(fd);
-        return r;
-      }
-      //NOHOST
-      if (nohost->Rename(old_fname.c_str(), fname.c_str()) != 0) {
-    	  ns = IOError(old_fname, errno);
-        nohost->Close(nfd);
-		printf("Exit:Fail the ReuseWritableFile(string %s)\n", fname.c_str());
-        return ns;
-      }
-      // NOHOST
-
-      if (options.use_mmap_writes) {
-        if (!checkedDiskForMmap_) {
-          // this will be executed once in the program's lifetime.
-          // do not use mmapWrite on non ext-3/xfs/tmpfs systems.
-          if (!SupportsFastAllocate(fname)) {
-            forceMmapOff = true;
+  		//printf("Enter the NewWritableFile(string %s)\n", fname.c_str());
+  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+      result->reset();
+      Status s;
+      int fd = -1;
+      do {
+        IOSTATS_TIMER_GUARD(open_nanos);
+        fd = nohost->Open(fname.c_str(), 'w'); // NOHOST
+      } while (fd < 0 && errno == EINTR);
+      if (fd < 0) {
+  		//printf("Exit:Fail the NewWritableFile(string %s)\n", fname.c_str());
+        s = IOError(fname, errno);
+      } else {
+        SetFD_CLOEXEC(fd, &options);
+        if (options.use_mmap_writes) {
+          if (!checkedDiskForMmap_) {
+            // this will be executed once in the program's lifetime.
+            // do not use mmapWrite on non ext-3/xfs/tmpfs systems.
+            if (!SupportsFastAllocate(fname)) {
+              forceMmapOff = true;
+            }
+            checkedDiskForMmap_ = true;
           }
-          checkedDiskForMmap_ = true;
+        }
+        if (options.use_mmap_writes && !forceMmapOff) {
+          //result->reset(new PosixMmapFile(fname, fd, page_size_, options));
+            EnvOptions no_mmap_writes_options = options;
+            no_mmap_writes_options.use_mmap_writes = false;
+    		//printf("Exit:Success the NewWritableFile (truly mmap)(string %s)\n", fname.c_str());
+            result->reset(new PosixWritableFile(fname, fd, no_mmap_writes_options, nohost)); // NOHOST
+        } else {
+          // disable mmap writes
+          EnvOptions no_mmap_writes_options = options;
+          no_mmap_writes_options.use_mmap_writes = false;
+
+  		//printf("Exit:Success the NewWritableFile(string %s)\n", fname.c_str());
+          result->reset(new PosixWritableFile(fname, fd, no_mmap_writes_options, nohost)); // NOHOST
         }
       }
-      if (options.use_mmap_writes && !forceMmapOff) {
-        result->reset(new PosixMmapFile(fname, fd, page_size_, options));
-      } else {
-        // disable mmap writes
-        EnvOptions no_mmap_writes_options = options;
-        no_mmap_writes_options.use_mmap_writes = false;
-
-        result->reset(new PosixWritableFile(fname, fd, no_mmap_writes_options, nfd, nohost)); // NOHOST
-      }
+      return s;
     }
-	printf("Exit:Success the ReuseWritableFile(string %s)\n", fname.c_str());
-    return ns;
-  }
+
+  virtual Status ReuseWritableFile(const std::string& fname,
+                                     const std::string& old_fname,
+                                     unique_ptr<WritableFile>* result,
+                                     const EnvOptions& options) override {
+  		//printf("Enter the ReuseWritableFile(string %s)\n", fname.c_str());
+  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+      result->reset();
+      Status s;
+      int fd = -1;
+      do {
+        IOSTATS_TIMER_GUARD(open_nanos);
+        fd = nohost->Open(old_fname.c_str(), 'a'); //NOHOST
+      } while (fd < 0 && errno == EINTR);
+      if (fd < 0) {
+        s = IOError(fname, errno);
+      } else {
+  /*      SetFD_CLOEXEC(fd, &options);
+        // rename into place
+        if (rename(old_fname.c_str(), fname.c_str()) != 0) {
+          Status r = IOError(old_fname, errno);
+          close(fd);
+          return r;
+        }*/
+        //NOHOST
+        if (nohost->Rename(old_fname.c_str(), fname.c_str()) != 0) {
+          Status r = IOError(old_fname, errno);
+          nohost->Close(fd);
+  		//printf("Exit:Fail the ReuseWritableFile(string %s)\n", fname.c_str());
+          return r;
+        }
+        // NOHOST
+
+        if (options.use_mmap_writes) {
+          if (!checkedDiskForMmap_) {
+            // this will be executed once in the program's lifetime.
+            // do not use mmapWrite on non ext-3/xfs/tmpfs systems.
+            if (!SupportsFastAllocate(fname)) {
+              forceMmapOff = true;
+            }
+            checkedDiskForMmap_ = true;
+          }
+        }
+        if (options.use_mmap_writes && !forceMmapOff) {
+            EnvOptions no_mmap_writes_options = options;
+            no_mmap_writes_options.use_mmap_writes = false;
+
+            result->reset(new PosixWritableFile(fname, fd, no_mmap_writes_options, nohost)); // NOHOST
+         // result->reset(new PosixMmapFile(fname, fd, page_size_, options));
+        } else {
+          // disable mmap writes
+          EnvOptions no_mmap_writes_options = options;
+          no_mmap_writes_options.use_mmap_writes = false;
+
+          result->reset(new PosixWritableFile(fname, fd, no_mmap_writes_options, nohost)); // NOHOST
+        }
+      }
+  	//printf("Exit:Success the ReuseWritableFile(string %s)\n", fname.c_str());
+      return s;
+    }
+
+
 
   virtual Status NewDirectory(const std::string& name,
                               unique_ptr<Directory>* result) override {
-		printf("Enter the NewDirectory(string %s)\n", name.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+		//printf("Enter the NewDirectory(string %s)\n", name.c_str());
+		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     result->reset();
     int fd;
-    int nfd; // NOHOST
     {
       IOSTATS_TIMER_GUARD(open_nanos);
-      fd = open(name.c_str(), 0);
-      nfd = nohost->Open(name.c_str(), 'd'); //NOHOST
+      fd = nohost->Open(name.c_str(), 'd'); //NOHOST
     }
     if (fd < 0) {
-    	printf("Exit:Fail the NewDirectory(string %s)\n", name.c_str());
+    	//printf("Exit:Fail the NewDirectory(string %s)\n", name.c_str());
       return IOError(name, errno);
     } else {
-      result->reset(new PosixDirectory(fd, nfd, nohost)); // NOHOST
+      result->reset(new PosixDirectory(fd, nohost)); // NOHOST
     }
-  	printf("Exit:Success the NewDirectory(string %s)\n", name.c_str());
+  	//printf("Exit:Success the NewDirectory(string %s)\n", name.c_str());
     return Status::OK();
   }
 
   virtual Status FileExists(const std::string& fname) override {
-    	printf("Enter: the FileExists(string %s)\n", fname.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-    int result = access(fname.c_str(), F_OK);
-    int nresult = nohost->Access(fname.c_str()); // NOHOST
+    	//printf("Enter: the FileExists(string %s)\n", fname.c_str());
+		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+    int result = nohost->Access(fname.c_str()); // NOHOST
 
     if (result == 0) {
-
-    	if(nresult != 0)
-    		printf("FileExists:: result value is not same(%s)[%d, %d]\n",
-    				fname.c_str(), result, nresult); // NOHOST
-
-
-    	printf("Exit:Success the FileExists(string %s)\n", fname.c_str());
+    	//printf("Exit:Success the FileExists(string %s)\n", fname.c_str());
       return Status::OK();
     }
-
     switch (errno) {
       case EACCES:
       case ELOOP:
       case ENAMETOOLONG:
       case ENOENT:
       case ENOTDIR:
-        	printf("Exit:Fail the FileExists(string %s)\n", fname.c_str());
+        	//printf("Exit:Fail the FileExists(string %s)\n", fname.c_str());
         return Status::NotFound();
       default:
         assert(result == EIO || result == ENOMEM);
-      	printf("Exit:Fail the FileExists(string %s)\n", fname.c_str());
+      	//printf("Exit:Fail the FileExists(string %s)\n", fname.c_str());
         return Status::IOError("Unexpected error(" + ToString(result) +
                                ") accessing file `" + fname + "' ");
     }
@@ -377,167 +373,112 @@ class PosixEnv : public Env {
 
   virtual Status GetChildren(const std::string& dir,
                              std::vector<std::string>* result) override {
-		printf("Enter the GetChildren(string %s)\n", dir.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+		//printf("Enter the GetChildren(string %s)\n", dir.c_str());
+		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     result->clear();
-    DIR* d = opendir(dir.c_str());
-    std::vector<std::string>* nresult = new std::vector<std::string>();
-
-    if (d == nullptr) {
-      	printf("Exit:Fail the GetChildren(string %s)\n", dir.c_str());
-      return IOError(dir, errno);
-    }
-    struct dirent* entry;
-    while ((entry = readdir(d)) != nullptr) {
-    	nresult->push_back(entry->d_name);
-    }
-    closedir(d);
 
     // NOHOST
-    int nd = -1;
-    nd = nohost->Open(dir.c_str(), 'd');
+    int d = -1;
+    d = nohost->Open(dir.c_str(), 'd');
     Node* nentry;
     int i = 0;
-    while ((nentry = nohost->ReadDir(nd)) != NULL) {
+    while ((nentry = nohost->ReadDir(d)) != NULL) {
     //	nohost->global_file_tree->printAll();
     	result->push_back(nentry->name->c_str());
       i++;
     }
-    nohost->Close(nd);
+    nohost->Close(d);
     // NOHOST
 
-  	printf("Exit:Success the GetChildren(string %s)\n", dir.c_str());
+  	//printf("Exit:Success the GetChildren(string %s)\n", dir.c_str());
     return Status::OK();
   }
 
   virtual Status DeleteFile(const std::string& fname) override {
-		printf("Enter the DeleteFile(string %s)\n", fname.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+		//printf("Enter the DeleteFile(string %s)\n", fname.c_str());
+		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     Status result;
-    Status nresult; // NOHOST
-    if (unlink(fname.c_str()) != 0) {
-      	printf("Exit:Fail the DeleteFile(string %s) -- original\n", fname.c_str());
-      result = IOError(fname, errno);
-    }
 
     // NOHOST
     if (nohost->DeleteFile(fname) != 0) {
-      	printf("Exit:Fail the DeleteFile(string %s) -- nohost\n", fname.c_str());
-      	nresult = IOError(fname, errno);
+      	//printf("Exit:Fail the DeleteFile(string %s) -- nohost\n", fname.c_str());
+      	result = IOError(fname, errno);
     }
     // NOHOST
-
-    if(result != nresult)
-    	printf("DeleteFile:: result value is not same[%s, %s]\n", result.ToString().c_str(), nresult.ToString().c_str()); // NOHOST
-  	printf("Exit:Success the DeleteFile(string %s)\n", fname.c_str());
-    return nresult;
+  	//printf("Exit:Success the DeleteFile(string %s)\n", fname.c_str());
+    return result;
   };
 
   virtual Status CreateDir(const std::string& name) override {
-		printf("Enter the CreateDir(string %s)\n", name.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+		//printf("Enter the CreateDir(string %s)\n", name.c_str());
+		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     Status result;
-    Status nresult; // NOHOST
-    if (mkdir(name.c_str(), 0755) != 0) {
-      result = IOError(name, errno);
-    }
 
     // NOHOST
     if (nohost->CreateDir(name) != 0) {
-      	printf("Exit:Fail the CreateDir(string %s)\n", name.c_str());
-      nresult = IOError(name, errno);
+      	//printf("Exit:Fail the CreateDir(string %s)\n", name.c_str());
+      result = IOError(name, errno);
     }
     // NOHOST
 
-
-    if(result != nresult) printf("CreateDir:: result value is not same[%s, %s]\n", result.ToString().c_str(), nresult.ToString().c_str()); // NOHOST
-  	printf("Exit:Success the CreateDir(string %s)\n", name.c_str());
-    return nresult;
+  	//printf("Exit:Success the CreateDir(string %s)\n", name.c_str());
+    return result;
   };
 
   virtual Status CreateDirIfMissing(const std::string& name) override {
-		printf("Enter the CreateDirIfMissing(string %s)\n", name.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+		//printf("Enter the CreateDirIfMissing(string %s)\n", name.c_str());
+		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     Status result;
-    Status nresult;  // NOHOST
-    if (mkdir(name.c_str(), 0755) != 0) {
-      if (errno != EEXIST) {
-        result = IOError(name, errno);
-      } else if (!DirExists(name)) { // Check that name is actually a
-                                     // directory.
-        // Message is taken from mkdir
-        result = Status::IOError("`"+name+"' exists but is not a directory");
-      }
-    }
 
     // NOHOST
     if (nohost->CreateDir(name) != 0) {
       if (errno != EEXIST) {
-    	  	printf("Exit:Fail the CreateDir(string %s)\n", name.c_str());
-    	  	nresult = IOError(name, errno);
+    	  	//printf("Exit:Fail the CreateDir(string %s)\n", name.c_str());
+    	  	result = IOError(name, errno);
       } else if (!nohost->DirExists(name)) {
     	  // Check that name is actually a directory.
         // Message is taken from mkdir
-    	  nresult = Status::IOError("`"+name+"' exists but is not a directory");
+    	  result = Status::IOError("`"+name+"' exists but is not a directory");
       }
     }
     // NOHOST
-
-    if(result != nresult) printf("CreateDirIfMissing:: result value is not same[%s, %s]\n", result.ToString().c_str(), nresult.ToString().c_str()); // NOHOST
-	printf("Exit:Success the CreateDir(string %s)\n", name.c_str());
-    return nresult;
+	//printf("Exit:Success the CreateDir(string %s)\n", name.c_str());
+    return result;
   };
 
   virtual Status DeleteDir(const std::string& name) override {
-		printf("Enter the DeleteDir(string %s)\n", name.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+		//printf("Enter the DeleteDir(string %s)\n", name.c_str());
+		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     Status result;
-    Status nresult; // NOHOST
-    if (rmdir(name.c_str()) != 0) {
+
+    if (nohost->DeleteDir(name) != 0) {
       result = IOError(name, errno);
     }
 
-    if (nohost->DeleteDir(name) != 0) {
-      nresult = IOError(name, errno);
-    }
+  	//printf("Exit:Success the DeleteDir(string %s), status:%s\n", name.c_str(), result.ToString().c_str());
 
-    if(result != nresult)
-    	printf("DeleteDir:: result value is not same[%s, %s]\n", result.ToString().c_str(), nresult.ToString().c_str()); // NOHOST
-  	printf("Exit:Success the DeleteDir(string %s), status:%s\n", name.c_str(), result.ToString().c_str());
-
-  	return nresult;
+  	return result;
   };
 
   virtual Status GetFileSize(const std::string& fname,
                              uint64_t* size) override {
-		printf("Enter the GetFileSize(string %s)\n", fname.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+		//printf("Enter the GetFileSize(string %s)\n", fname.c_str());
+		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     Status s;
-    struct stat sbuf;
-    if (stat(fname.c_str(), &sbuf) != 0) {
-      *size = 0;
-      s = IOError(fname, errno);
-    }/* else {
-      *size = sbuf.st_size;
-    }*/
+
       *size = nohost->GetFileSize(fname); //NOHOST
     return s;
   }
 
   virtual Status GetFileModificationTime(const std::string& fname,
                                          uint64_t* file_mtime) override {
-		printf("Enter the GetFileModificationTime(string %s)\n", fname.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-    struct stat s;
-    if (stat(fname.c_str(), &s) !=0) {
-      return IOError(fname, errno);
-    }
-   // *file_mtime = static_cast<uint64_t>(s.st_mtime);
+		//printf("Enter the GetFileModificationTime(string %s)\n", fname.c_str());
+		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
 
     // NOHOST
     uint64_t mtime = 0;
     if ((mtime = nohost->GetFileModificationTime(fname)) != 1) {
-      	printf("Exit:Fail the GetFileModificationTime(string %s)\n", fname.c_str());
+      	//printf("Exit:Fail the GetFileModificationTime(string %s)\n", fname.c_str());
       return IOError(fname, errno);
     }
     *file_mtime = mtime;
@@ -547,90 +488,70 @@ class PosixEnv : public Env {
   }
   virtual Status RenameFile(const std::string& src,
                             const std::string& target) override {
-		printf("Enter the RenameFile(string %s, string %s)\n", src.c_str(), target.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+		//printf("Enter the RenameFile(string %s, string %s)\n", src.c_str(), target.c_str());
+		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     Status result;
-    Status nresult;
-    if (rename(src.c_str(), target.c_str()) != 0) {
-      result = IOError(src, errno);
-    }
 
     // NOHOST
     if (nohost->Rename(src.c_str(), target.c_str()) != 0) {
-      nresult = IOError(src, errno);
+      result = IOError(src, errno);
     }
     // NOHOST
-
-    if(result != nresult) printf("RenameFile:: result value is not same[%s, %s]\n", result.ToString().c_str(), nresult.ToString().c_str()); // NOHOST
-  	printf("Exit:Success the RenameFile(string %s)\n", src.c_str());
-    return nresult;
+  	//printf("Exit:Success the RenameFile(string %s)\n", src.c_str());
+    return result;
   }
 
   virtual Status LinkFile(const std::string& src,
                           const std::string& target) override {
-		printf("Enter the LinkFile(string %s)\n", src.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-    Status result;
-    if (link(src.c_str(), target.c_str()) != 0) {
-      if (errno == EXDEV) {
-        return Status::NotSupported("No cross FS links allowed");
-      }
-      result = IOError(src, errno);
-    }
-    return result;
+		//printf("Enter the LinkFile(string %s)\n", src.c_str());
+		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+
+    return Status::NotSupported("No cross FS links allowed");
   }
 
   virtual Status LockFile(const std::string& fname, FileLock** lock) override {
-		printf("Enter the LockFile( %s )\n", fname.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+		//printf("Enter the LockFile( %s )\n", fname.c_str());
+		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     *lock = nullptr;
     Status result;
     int fd;
 
-    int nfd; // NOHOST
-
     {
-      nfd = nohost->Open(fname.c_str(), 'a'); // NOHOST
       IOSTATS_TIMER_GUARD(open_nanos);
-      fd = open(fname.c_str(), O_RDWR | O_CREAT, 0644);
+      fd = nohost->Open(fname.c_str(), 'a'); // NOHOST
     }
     if (fd < 0) {
       result = IOError(fname, errno);
-    } else if (LockOrUnlock(fname, fd, true, nfd, nohost) == -1) { // NOHOST
+    } else if (LockOrUnlock(fname, fd, true, nohost) == -1) { // NOHOST
       result = IOError("lock " + fname, errno);
-      close(fd);
-      nohost->Close(nfd); // NOHOST
+      nohost->Close(fd); // NOHOST
     } else {
-      SetFD_CLOEXEC(fd, nullptr);
       PosixFileLock* my_lock = new PosixFileLock;
       my_lock->fd_ = fd;
-      my_lock->nfd_ = nfd; // NOHOST
       my_lock->filename = fname;
       *lock = my_lock;
     }
 
-	printf("Exit: the LockFile( %s )\n", fname.c_str());
+	//printf("Exit: the LockFile( %s )\n", fname.c_str());
     return result;
   }
 
   virtual Status UnlockFile(FileLock* lock) override {
     PosixFileLock* my_lock = reinterpret_cast<PosixFileLock*>(lock);
-	printf("Enter: the UnlockFile( %s )\n", my_lock->filename.c_str());
-	printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+	//printf("Enter: the UnlockFile( %s )\n", my_lock->filename.c_str());
+	//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     Status result;
-    if (LockOrUnlock(my_lock->filename, my_lock->fd_, false, my_lock->nfd_, nohost) == -1) { // NOHOST
+    if (LockOrUnlock(my_lock->filename, my_lock->fd_, false, nohost) == -1) { // NOHOST
       result = IOError("unlock", errno);
     }
-    close(my_lock->fd_);
-    nohost->Close(my_lock->nfd_); // NOHOST
+    nohost->Close(my_lock->fd_); // NOHOST
     delete my_lock;
-	printf("Exit: the UnlockFile( %s )\n", my_lock->filename.c_str());
+	//printf("Exit: the UnlockFile( %s )\n", my_lock->filename.c_str());
     return result;
   }
 
   virtual void Schedule(void (*function)(void* arg1), void* arg,
-                        Priority pri = LOW, void* tag = nullptr,
-                        void (*unschedFunction)(void* arg) = 0) override;
+                        Priority pri = LOW, void* tag = nullptr) override;
 
   virtual int UnSchedule(void* arg, Priority pri) override;
 
@@ -641,8 +562,6 @@ class PosixEnv : public Env {
   virtual unsigned int GetThreadPoolQueueLen(Priority pri = LOW) const override;
 
   virtual Status GetTestDirectory(std::string* result) override {
-		printf("Enter the GetTestDirectory(string %s)\n", result->c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     const char* env = getenv("TEST_TMPDIR");
     if (env && env[0] != '\0') {
       *result = env;
@@ -653,8 +572,10 @@ class PosixEnv : public Env {
     }
     // Directory may already exist
     CreateDir(*result);
-	printf("Exit: the GetTestDirectory(string %s)\n", result->c_str());
     return Status::OK();
+#ifdef NOHOST
+	/* Do Nothing */
+#endif
   }
 
   virtual Status GetThreadList(
@@ -679,31 +600,31 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewLogger(const std::string& fname,
-                           shared_ptr<Logger>* result) override {
-		printf("Enter the NewLogger(string %s)\n", fname.c_str());
-		printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-    FILE* f;
-    int nfd = 0; // NOHOST
-    {
-      IOSTATS_TIMER_GUARD(open_nanos);
-      f = fopen(fname.c_str(), "w");
-      nfd = nohost->Open(fname.c_str(), 'w'); // NOHOST
-    }
-    if (f == nullptr) {
-      result->reset();
-  	printf("Exit:Fail the NewLogger(string %s)\n", fname.c_str());
-      return IOError(fname, errno);
-    } else {
-      int fd = fileno(f);
-#ifdef ROCKSDB_FALLOCATE_PRESENT
-      fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, 4 * 1024);
-#endif
-      SetFD_CLOEXEC(fd, nullptr);
-      result->reset(new PosixLogger(f, &PosixEnv::gettid, nfd, nohost, this)); // NOHOST
-		printf("Exit:Success the NewLogger(string %s)\n", fname.c_str());
-      return Status::OK();
-    }
-  }
+                            shared_ptr<Logger>* result) override {
+ 		//printf("Enter the NewLogger(string %s)\n", fname.c_str());
+ 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
+     FILE* f;
+     int nfd = 0; // NOHOST
+     {
+       IOSTATS_TIMER_GUARD(open_nanos);
+       f = fopen(fname.c_str(), "w");
+       nfd = nohost->Open(fname.c_str(), 'w'); // NOHOST
+     }
+     if (f == nullptr) {
+       result->reset();
+   	//printf("Exit:Fail the NewLogger(string %s)\n", fname.c_str());
+       return IOError(fname, errno);
+     } else {
+       int fd = fileno(f);
+ #ifdef ROCKSDB_FALLOCATE_PRESENT
+       fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, 4 * 1024);
+ #endif
+       SetFD_CLOEXEC(fd, nullptr);
+       result->reset(new PosixLogger(f, &PosixEnv::gettid, nfd, nohost, this)); // NOHOST
+ 		//printf("Exit:Success the NewLogger(string %s)\n", fname.c_str());
+       return Status::OK();
+     }
+   }
 
   virtual uint64_t NowMicros() override {
     struct timeval tv;
@@ -765,7 +686,7 @@ class PosixEnv : public Env {
     }
     std::string nret = nohost->GetAbsolutePath(); //NOHOST
 
-    *output_path = nret; //NOHOST
+    *output_path = nret;
 
   	printf("original absol:%s, nohost absol:%s\n", output_path->c_str(), nret.c_str()); // NOHOST
     return Status::OK();
@@ -837,17 +758,8 @@ class PosixEnv : public Env {
 
   // Returns true iff the named directory exists and is a directory.
   virtual bool DirExists(const std::string& dname) {
-    struct stat statbuf;
-    if (stat(dname.c_str(), &statbuf) == 0) {
 
-  	  if(nohost->DirExists(dname) != S_ISDIR(statbuf.st_mode)) // NOHOST
-  		  printf("DirExists:: return value is not same[%d, %d]\n",
-  				  nohost->DirExists(dname), S_ISDIR(statbuf.st_mode)); // NOHOST
-
-      return S_ISDIR(statbuf.st_mode);
-    }
-   // return false; // stat() failed return false
-    return nohost->DirExists(dname);
+    return nohost->DirExists(dname); // stat() failed return false
   }
 
   bool SupportsFastAllocate(const std::string& path) {
@@ -873,11 +785,301 @@ class PosixEnv : public Env {
 
   size_t page_size_;
 
+
+  class ThreadPool {
+   public:
+    ThreadPool()
+        : total_threads_limit_(1),
+          bgthreads_(0),
+          queue_(),
+          queue_len_(0),
+          exit_all_threads_(false),
+          low_io_priority_(false),
+          env_(nullptr) {
+      PthreadCall("mutex_init", pthread_mutex_init(&mu_, nullptr));
+      PthreadCall("cvar_init", pthread_cond_init(&bgsignal_, nullptr));
+    }
+
+    ~ThreadPool() {
+      assert(bgthreads_.size() == 0U);
+    }
+
+    void JoinAllThreads() {
+      PthreadCall("lock", pthread_mutex_lock(&mu_));
+      assert(!exit_all_threads_);
+      exit_all_threads_ = true;
+      PthreadCall("signalall", pthread_cond_broadcast(&bgsignal_));
+      PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+      for (const auto tid : bgthreads_) {
+        pthread_join(tid, nullptr);
+      }
+      bgthreads_.clear();
+    }
+
+    void SetHostEnv(Env* env) {
+      env_ = env;
+    }
+
+    void LowerIOPriority() {
+#ifdef OS_LINUX
+      PthreadCall("lock", pthread_mutex_lock(&mu_));
+      low_io_priority_ = true;
+      PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+#endif
+    }
+
+    // Return true if there is at least one thread needs to terminate.
+    bool HasExcessiveThread() {
+      return static_cast<int>(bgthreads_.size()) > total_threads_limit_;
+    }
+
+    // Return true iff the current thread is the excessive thread to terminate.
+    // Always terminate the running thread that is added last, even if there are
+    // more than one thread to terminate.
+    bool IsLastExcessiveThread(size_t thread_id) {
+      return HasExcessiveThread() && thread_id == bgthreads_.size() - 1;
+    }
+
+    // Is one of the threads to terminate.
+    bool IsExcessiveThread(size_t thread_id) {
+      return static_cast<int>(thread_id) >= total_threads_limit_;
+    }
+
+    // Return the thread priority.
+    // This would allow its member-thread to know its priority.
+    Env::Priority GetThreadPriority() {
+      return priority_;
+    }
+
+    // Set the thread priority.
+    void SetThreadPriority(Env::Priority priority) {
+      priority_ = priority;
+    }
+
+    void BGThread(size_t thread_id) {
+      bool low_io_priority = false;
+      while (true) {
+        // Wait until there is an item that is ready to run
+        PthreadCall("lock", pthread_mutex_lock(&mu_));
+        // Stop waiting if the thread needs to do work or needs to terminate.
+        while (!exit_all_threads_ && !IsLastExcessiveThread(thread_id) &&
+               (queue_.empty() || IsExcessiveThread(thread_id))) {
+          PthreadCall("wait", pthread_cond_wait(&bgsignal_, &mu_));
+        }
+        if (exit_all_threads_) { // mechanism to let BG threads exit safely
+          PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+          break;
+        }
+        if (IsLastExcessiveThread(thread_id)) {
+          // Current thread is the last generated one and is excessive.
+          // We always terminate excessive thread in the reverse order of
+          // generation time.
+          auto terminating_thread = bgthreads_.back();
+          pthread_detach(terminating_thread);
+          bgthreads_.pop_back();
+          if (HasExcessiveThread()) {
+            // There is still at least more excessive thread to terminate.
+            WakeUpAllThreads();
+          }
+          PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+          break;
+        }
+        void (*function)(void*) = queue_.front().function;
+        void* arg = queue_.front().arg;
+        queue_.pop_front();
+        queue_len_.store(static_cast<unsigned int>(queue_.size()),
+                         std::memory_order_relaxed);
+
+        bool decrease_io_priority = (low_io_priority != low_io_priority_);
+        PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+
+#ifdef OS_LINUX
+        if (decrease_io_priority) {
+          #define IOPRIO_CLASS_SHIFT               (13)
+          #define IOPRIO_PRIO_VALUE(class, data)   \
+              (((class) << IOPRIO_CLASS_SHIFT) | data)
+          // Put schedule into IOPRIO_CLASS_IDLE class (lowest)
+          // These system calls only have an effect when used in conjunction
+          // with an I/O scheduler that supports I/O priorities. As at
+          // kernel 2.6.17 the only such scheduler is the Completely
+          // Fair Queuing (CFQ) I/O scheduler.
+          // To change scheduler:
+          //  echo cfq > /sys/block/<device_name>/queue/schedule
+          // Tunables to consider:
+          //  /sys/block/<device_name>/queue/slice_idle
+          //  /sys/block/<device_name>/queue/slice_sync
+          syscall(SYS_ioprio_set,
+                  1,  // IOPRIO_WHO_PROCESS
+                  0,  // current thread
+                  IOPRIO_PRIO_VALUE(3, 0));
+          low_io_priority = true;
+        }
+#else
+        (void)decrease_io_priority; // avoid 'unused variable' error
+#endif
+        (*function)(arg);
+      }
+    }
+
+    // Helper struct for passing arguments when creating threads.
+    struct BGThreadMetadata {
+      ThreadPool* thread_pool_;
+      size_t thread_id_;  // Thread count in the thread.
+      explicit BGThreadMetadata(ThreadPool* thread_pool, size_t thread_id)
+          : thread_pool_(thread_pool), thread_id_(thread_id) {}
+    };
+
+    static void* BGThreadWrapper(void* arg) {
+      BGThreadMetadata* meta = reinterpret_cast<BGThreadMetadata*>(arg);
+      size_t thread_id = meta->thread_id_;
+      ThreadPool* tp = meta->thread_pool_;
+#if ROCKSDB_USING_THREAD_STATUS
+      // for thread-status
+      ThreadStatusUtil::RegisterThread(tp->env_,
+          (tp->GetThreadPriority() == Env::Priority::HIGH ?
+              ThreadStatus::HIGH_PRIORITY :
+              ThreadStatus::LOW_PRIORITY));
+#endif
+      delete meta;
+      tp->BGThread(thread_id);
+#if ROCKSDB_USING_THREAD_STATUS
+      ThreadStatusUtil::UnregisterThread();
+#endif
+      return nullptr;
+    }
+
+    void WakeUpAllThreads() {
+      PthreadCall("signalall", pthread_cond_broadcast(&bgsignal_));
+    }
+
+    void SetBackgroundThreadsInternal(int num, bool allow_reduce) {
+      PthreadCall("lock", pthread_mutex_lock(&mu_));
+      if (exit_all_threads_) {
+        PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+        return;
+      }
+      if (num > total_threads_limit_ ||
+          (num < total_threads_limit_ && allow_reduce)) {
+        total_threads_limit_ = std::max(1, num);
+        WakeUpAllThreads();
+        StartBGThreads();
+      }
+      PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+    }
+
+    void IncBackgroundThreadsIfNeeded(int num) {
+      SetBackgroundThreadsInternal(num, false);
+    }
+
+    void SetBackgroundThreads(int num) {
+      SetBackgroundThreadsInternal(num, true);
+    }
+
+    void StartBGThreads() {
+      // Start background thread if necessary
+      while ((int)bgthreads_.size() < total_threads_limit_) {
+        pthread_t t;
+        PthreadCall(
+            "create thread",
+            pthread_create(&t, nullptr, &ThreadPool::BGThreadWrapper,
+                           new BGThreadMetadata(this, bgthreads_.size())));
+
+        // Set the thread name to aid debugging
+#if defined(_GNU_SOURCE) && defined(__GLIBC_PREREQ)
+#if __GLIBC_PREREQ(2, 12)
+        char name_buf[16];
+        snprintf(name_buf, sizeof name_buf, "rocksdb:bg%" ROCKSDB_PRIszt,
+                 bgthreads_.size());
+        name_buf[sizeof name_buf - 1] = '\0';
+        pthread_setname_np(t, name_buf);
+#endif
+#endif
+
+        bgthreads_.push_back(t);
+      }
+    }
+
+    void Schedule(void (*function)(void* arg1), void* arg, void* tag) {
+      PthreadCall("lock", pthread_mutex_lock(&mu_));
+
+      if (exit_all_threads_) {
+        PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+        return;
+      }
+
+      StartBGThreads();
+
+      // Add to priority queue
+      queue_.push_back(BGItem());
+      queue_.back().function = function;
+      queue_.back().arg = arg;
+      queue_.back().tag = tag;
+      queue_len_.store(static_cast<unsigned int>(queue_.size()),
+                       std::memory_order_relaxed);
+
+      if (!HasExcessiveThread()) {
+        // Wake up at least one waiting thread.
+        PthreadCall("signal", pthread_cond_signal(&bgsignal_));
+      } else {
+        // Need to wake up all threads to make sure the one woken
+        // up is not the one to terminate.
+        WakeUpAllThreads();
+      }
+
+      PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+    }
+
+    int UnSchedule(void* arg) {
+      int count = 0;
+      PthreadCall("lock", pthread_mutex_lock(&mu_));
+
+      // Remove from priority queue
+      BGQueue::iterator it = queue_.begin();
+      while (it != queue_.end()) {
+        if (arg == (*it).tag) {
+          it = queue_.erase(it);
+          count++;
+        } else {
+          it++;
+        }
+      }
+      queue_len_.store(static_cast<unsigned int>(queue_.size()),
+                       std::memory_order_relaxed);
+      PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+      return count;
+    }
+
+    unsigned int GetQueueLen() const {
+      return queue_len_.load(std::memory_order_relaxed);
+    }
+
+   private:
+    // Entry per Schedule() call
+    struct BGItem {
+      void* arg;
+      void (*function)(void*);
+      void* tag;
+    };
+    typedef std::deque<BGItem> BGQueue;
+
+    pthread_mutex_t mu_;
+    pthread_cond_t bgsignal_;
+    int total_threads_limit_;
+    std::vector<pthread_t> bgthreads_;
+    BGQueue queue_;
+    std::atomic_uint queue_len_;  // Queue length. Used for stats reporting
+    bool exit_all_threads_;
+    bool low_io_priority_;
+    Env::Priority priority_;
+    Env* env_;
+  };
+
   std::vector<ThreadPool> thread_pools_;
+
   pthread_mutex_t mu_;
   std::vector<pthread_t> threads_to_join_;
-
   NoHostFs* nohost; // NOHOST
+
 };
 
 PosixEnv::PosixEnv()
@@ -885,7 +1087,7 @@ PosixEnv::PosixEnv()
       forceMmapOff(false),
       page_size_(getpagesize()),
       thread_pools_(Priority::TOTAL) {
-  ThreadPool::PthreadCall("mutex_init", pthread_mutex_init(&mu_, nullptr));
+  PthreadCall("mutex_init", pthread_mutex_init(&mu_, nullptr));
   for (int pool_id = 0; pool_id < Env::Priority::TOTAL; ++pool_id) {
     thread_pools_[pool_id].SetThreadPriority(
         static_cast<Env::Priority>(pool_id));
@@ -897,9 +1099,9 @@ PosixEnv::PosixEnv()
 }
 
 void PosixEnv::Schedule(void (*function)(void* arg1), void* arg, Priority pri,
-                        void* tag, void (*unschedFunction)(void* arg)) {
+                        void* tag) {
   assert(pri >= Priority::LOW && pri <= Priority::HIGH);
-  thread_pools_[pri].Schedule(function, arg, tag, unschedFunction);
+  thread_pools_[pri].Schedule(function, arg, tag);
 }
 
 int PosixEnv::UnSchedule(void* arg, Priority pri) {
@@ -928,11 +1130,11 @@ void PosixEnv::StartThread(void (*function)(void* arg), void* arg) {
   StartThreadState* state = new StartThreadState;
   state->user_function = function;
   state->arg = arg;
-  ThreadPool::PthreadCall(
-      "start thread", pthread_create(&t, nullptr, &StartThreadWrapper, state));
-  ThreadPool::PthreadCall("lock", pthread_mutex_lock(&mu_));
+  PthreadCall("start thread",
+              pthread_create(&t, nullptr,  &StartThreadWrapper, state));
+  PthreadCall("lock", pthread_mutex_lock(&mu_));
   threads_to_join_.push_back(t);
-  ThreadPool::PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+  PthreadCall("unlock", pthread_mutex_unlock(&mu_));
 }
 
 void PosixEnv::WaitForJoin() {
@@ -970,17 +1172,6 @@ std::string Env::GenerateUniqueId() {
 }
 
 Env* Env::Default() {
-  // The following function call initializes the singletons of ThreadLocalPtr
-  // right before the static default_env.  This guarantees default_env will
-  // always being destructed before the ThreadLocalPtr singletons get
-  // destructed as C++ guarantees that the destructions of static variables
-  // is in the reverse order of their constructions.
-  //
-  // Since static members are destructed in the reverse order
-  // of their construction, having this call here guarantees that
-  // the destructor of static PosixEnv will go first, then the
-  // the singletons of ThreadLocalPtr.
-  ThreadLocalPtr::InitSingletons();
   static PosixEnv default_env;
   return &default_env;
 }
