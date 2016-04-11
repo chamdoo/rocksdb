@@ -40,7 +40,7 @@ public:
 	NoHostFs(size_t assign_size){
 		global_file_tree = new GlobalFileTableTree(assign_size);
 		open_file_table = new std::vector<OpenFileEntry*>();
-		flash_fd = open("flash.db", O_CREAT | O_RDWR | O_TRUNC, 0666);
+		flash_fd = open("flash.db", O_CREAT | O_RDWR | O_TRUNC | O_SYNC, 0666);
 		this->page_size = assign_size;
         int fd = Open("/proc/sys/kernel/random/uuid", 'w');
         Write(fd, "8691b88d-c84f-4bed-9d7b-7f3e08fe60f2", sizeof("8691b88d-c84f-4bed-9d7b-7f3e08fe60f2"));

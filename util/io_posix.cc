@@ -663,7 +663,7 @@ size_t PosixWritableFile::GetUniqueId(char* id, size_t max_size) const {
 }
 #endif
 
-PosixDirectory::~PosixDirectory() { close(fd_); }
+PosixDirectory::~PosixDirectory() { nohost_->Close(fd_); }
 
 Status PosixDirectory::Fsync() {
 /*  if (fsync(fd_) == -1) {

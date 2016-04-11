@@ -46,20 +46,20 @@ class PosixLogger : public Logger {
         file_(f),
         gettid_(gettid),
         log_size_(0),
-        fd_(fileno(f)),
+        fd_(0),
         last_flush_micros_(0),
         env_(env),
         flush_pending_(false),
 		nfd_(nfd), // NOHOST
 		nohost_(nohost) {} // NOHOST
   virtual ~PosixLogger() {
-    fclose(file_);
+   // fclose(file_);
     nohost_->Close(nfd_); // NOHOST
   }
   virtual void Flush() override {
     if (flush_pending_) {
       flush_pending_ = false;
-      fflush(file_);
+    //  fflush(file_);
     }
     last_flush_micros_ = env_->NowMicros();
   }
@@ -126,6 +126,7 @@ class PosixLogger : public Logger {
 
       assert(p <= limit);
       const size_t write_size = p - base;
+/*
 
 #ifdef ROCKSDB_FALLOCATE_PRESENT
       // If this write would cross a boundary of kDebugLogChunkSize
@@ -143,6 +144,7 @@ class PosixLogger : public Logger {
             static_cast<off_t>(desired_allocation_chunk * kDebugLogChunkSize));
       }
 #endif
+*/
 
 
       // NOHOST
@@ -157,7 +159,7 @@ class PosixLogger : public Logger {
         sum += done;
       }
       // NOHOST
-
+/*
       size_t sz = fwrite(base, 1, write_size, file_);
       flush_pending_ = true;
       assert(sz == write_size);
@@ -168,7 +170,7 @@ class PosixLogger : public Logger {
         now_tv.tv_usec;
       if (now_micros - last_flush_micros_ >= flush_every_seconds_ * 1000000) {
         Flush();
-      }
+      }*/
       if (base != buffer) {
         delete[] base;
       }

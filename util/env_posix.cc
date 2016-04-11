@@ -149,12 +149,12 @@ class PosixEnv : public Env {
   }
 
   void SetFD_CLOEXEC(int fd, const EnvOptions* options) {
-    if ((options == nullptr || options->set_fd_cloexec) && fd > 0) {
+/*    if ((options == nullptr || options->set_fd_cloexec) && fd > 0) {
       fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
 #ifdef NOHOST
-	  /* TODO: don't understand */
+	   TODO: don't understand
 #endif
-    }
+    }*/
   }
 
   virtual Status NewSequentialFile(const std::string& fname,
@@ -603,23 +603,20 @@ class PosixEnv : public Env {
                             shared_ptr<Logger>* result) override {
  		//printf("Enter the NewLogger(string %s)\n", fname.c_str());
  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-     FILE* f;
+     FILE* f = NULL;
      int nfd = 0; // NOHOST
      {
        IOSTATS_TIMER_GUARD(open_nanos);
-       f = fopen(fname.c_str(), "w");
+     //  f = fopen(fname.c_str(), "w");
        nfd = nohost->Open(fname.c_str(), 'w'); // NOHOST
      }
-     if (f == nullptr) {
+     if (nfd < 0) {
        result->reset();
    	//printf("Exit:Fail the NewLogger(string %s)\n", fname.c_str());
        return IOError(fname, errno);
      } else {
-       int fd = fileno(f);
- #ifdef ROCKSDB_FALLOCATE_PRESENT
-       fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, 4 * 1024);
- #endif
-       SetFD_CLOEXEC(fd, nullptr);
+       //int fd = 0;//fileno(f);
+    //   SetFD_CLOEXEC(fd, nullptr);
        result->reset(new PosixLogger(f, &PosixEnv::gettid, nfd, nohost, this)); // NOHOST
  		//printf("Exit:Success the NewLogger(string %s)\n", fname.c_str());
        return Status::OK();
