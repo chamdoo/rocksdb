@@ -2127,7 +2127,7 @@ TEST_F(DBTest, IterWithSnapshot) {
   } while (ChangeOptions(kSkipHashCuckoo));
 }
 
-TEST_F(DBTest, Recover) {
+/*TEST_F(DBTest, Recover) {
   do {
     CreateAndReopenWithCF({"pikachu"}, CurrentOptions());
     ASSERT_OK(Put(1, "foo", "v1"));
@@ -2148,7 +2148,7 @@ TEST_F(DBTest, Recover) {
     ASSERT_EQ("v2", Get(1, "bar"));
     ASSERT_EQ("v5", Get(1, "baz"));
   } while (ChangeOptions());
-}
+}*/
 
 TEST_F(DBTest, RecoverWithTableHandle) {
   do {
@@ -2188,7 +2188,7 @@ TEST_F(DBTest, RecoverWithTableHandle) {
   } while (ChangeOptions());
 }
 
-TEST_F(DBTest, IgnoreRecoveredLog) {
+/*TEST_F(DBTest, IgnoreRecoveredLog) {
   std::string backup_logs = dbname_ + "/backup_logs";
 
   // delete old files in backup_logs directory
@@ -2275,7 +2275,7 @@ TEST_F(DBTest, IgnoreRecoveredLog) {
     Status s = TryReopen(options);
     ASSERT_TRUE(!s.ok());
   } while (ChangeOptions(kSkipHashCuckoo));
-}
+}*/
 
 TEST_F(DBTest, CheckLock) {
   do {
@@ -2619,7 +2619,7 @@ TEST_F(DBTest, GetProperty) {
   }
 }
 
-TEST_F(DBTest, ApproximateMemoryUsage) {
+/*TEST_F(DBTest, ApproximateMemoryUsage) {
   const int kNumRounds = 10;
   // TODO(noetzli) kFlushesPerRound does not really correlate with how many
   // flushes happen.
@@ -2716,7 +2716,7 @@ TEST_F(DBTest, ApproximateMemoryUsage) {
   dbfull()->GetIntProperty("rocksdb.size-all-mem-tables", &all_mem);
   ASSERT_EQ(active_mem, unflushed_mem);
   ASSERT_EQ(unflushed_mem, all_mem);
-}
+}*/
 
 TEST_F(DBTest, EstimatePendingCompBytes) {
   // Set sizes to both background thread pool to be 1 and block them.
@@ -2816,7 +2816,7 @@ TEST_F(DBTest, FLUSH) {
   } while (ChangeCompactOptions());
 }
 
-TEST_F(DBTest, RecoveryWithEmptyLog) {
+/*TEST_F(DBTest, RecoveryWithEmptyLog) {
   do {
     CreateAndReopenWithCF({"pikachu"}, CurrentOptions());
     ASSERT_OK(Put(1, "foo", "v1"));
@@ -2827,7 +2827,7 @@ TEST_F(DBTest, RecoveryWithEmptyLog) {
     ReopenWithColumnFamilies({"default", "pikachu"}, CurrentOptions());
     ASSERT_EQ("v3", Get(1, "foo"));
   } while (ChangeOptions());
-}
+}*/
 
 #ifndef ROCKSDB_LITE
 TEST_F(DBTest, FlushSchedule) {
@@ -8024,7 +8024,7 @@ TEST_F(DBTest, L0L1L2AndUpHitCounter) {
                          TestGetTickerCount(options, GET_HIT_L2_AND_UP));
 }
 
-TEST_F(DBTest, EncodeDecompressedBlockSizeTest) {
+/*TEST_F(DBTest, EncodeDecompressedBlockSizeTest) {
   // iter 0 -- zlib
   // iter 1 -- bzip2
   // iter 2 -- lz4
@@ -8067,7 +8067,7 @@ TEST_F(DBTest, EncodeDecompressedBlockSizeTest) {
       }
     }
   }
-}
+}*/
 
 TEST_F(DBTest, MutexWaitStats) {
   Options options = CurrentOptions();
@@ -8776,7 +8776,7 @@ TEST_F(DBTest, LargeBatchWithColumnFamilies) {
 }
 
 // Make sure that Flushes can proceed in parallel with CompactRange()
-TEST_F(DBTest, FlushesInParallelWithCompactRange) {
+/*TEST_F(DBTest, FlushesInParallelWithCompactRange) {
   // iter == 0 -- leveled
   // iter == 1 -- leveled, but throw in a flush between two levels compacting
   // iter == 2 -- universal
@@ -8826,7 +8826,7 @@ TEST_F(DBTest, FlushesInParallelWithCompactRange) {
     // create
     // 3 memtables, and that will fail because max_write_buffer_number is 2
     for (int num = 0; num < 3; num++) {
-      GenerateNewRandomFile(&rnd, /* nowait */ true);
+      GenerateNewRandomFile(&rnd,  nowait  true);
     }
 
     TEST_SYNC_POINT("DBTest::FlushesInParallelWithCompactRange:2");
@@ -8836,7 +8836,7 @@ TEST_F(DBTest, FlushesInParallelWithCompactRange) {
     }
     rocksdb::SyncPoint::GetInstance()->DisableProcessing();
   }
-}
+}*/
 
 TEST_F(DBTest, DelayedWriteRate) {
   Options options;
@@ -8882,7 +8882,7 @@ TEST_F(DBTest, DelayedWriteRate) {
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
 }
 
-TEST_F(DBTest, HardLimit) {
+/*TEST_F(DBTest, HardLimit) {
   Options options;
   options.env = env_;
   env_->SetBackgroundThreads(1, Env::LOW);
@@ -8927,7 +8927,7 @@ TEST_F(DBTest, HardLimit) {
   ASSERT_GE(callback_count.load(), 1);
 
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
-}
+}*/
 
 #ifndef ROCKSDB_LITE
 TEST_F(DBTest, SoftLimit) {
