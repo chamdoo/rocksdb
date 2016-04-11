@@ -63,4 +63,5 @@ java/javadoc
 scan_build_report/
 t
 LOG
-toolchain/
+
+*.swo

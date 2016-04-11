@@ -1,0 +1,90 @@
+diff --git a/arm.sh b/arm.sh
+index 6412176..58b9482 100755
+--- a/arm.sh
++++ b/arm.sh
+@@ -1,4 +1,4 @@
+-#!/bin/sh
++#!/bin/bash
+ 
+ BASEDIR=$(cd $(dirname $0) ; pwd -P)
+ 
+@@ -13,7 +13,7 @@ if [ ! -d $BASEDIR/toolchain ]; then
+ 	# To solve timed_mutex
+ 	# _GTHREAD_USE_MUTEX_TIMEDLOCK=0 -> 1
+ 	# $TOOLCHAIN/include/c++/4.8/arm-linux-androideabi/ ... / c++config.h
+-#	patch -p0 -i toolchain.patch
++	patch -p0 -i toolchain.patch
+ fi
+ 
+ 
+@@ -46,5 +46,5 @@ export OBJCOPY="${HOST}-objcopy"
+ export OBJDUMP="${HOST}-objdump"
+ 
+ #PORTABLE=1 make shared_lib
+-PORTABLE=1 make static_lib
++PORTABLE=1 make static_lib -j8
+ #PORTABLE=1 make release
+diff --git a/toolchain.patch b/toolchain.patch
+index 7c7f67f..f76258e 100644
+--- a/toolchain.patch
++++ b/toolchain.patch
+@@ -46,3 +46,14 @@ diff -Naur ./toolchain/include/c++/4.8/arm-linux-androideabi/thumb/bits/c++confi
+  
+  #if defined (_GLIBCXX_HAVE__ACOSF) && ! defined (_GLIBCXX_HAVE_ACOSF)
+  # define _GLIBCXX_HAVE_ACOSF 1
++diff -Naur gthr-default_orig.h gthr-default.h 
++--- ./toolchain/include/c++/4.8/arm-linux-androideabi/armv7-a/bits/gthr-default.h	2016-03-14 12:45:40.008962752 -0400
+++++ gthr-default.h	2016-03-14 12:44:06.820247754 -0400
++@@ -46,6 +46,7 @@
++ #endif
++ 
++ #include <pthread.h>
+++#include "include/android/timedlock.h"
++ 
++ #if ((defined(_LIBOBJC) || defined(_LIBOBJC_WEAK)) \
++      || !defined(_GTHREAD_USE_MUTEX_TIMEDLOCK))
+diff --git a/util/io_posix.h b/util/io_posix.h
+index 0e5da39..6689924 100644
+--- a/util/io_posix.h
++++ b/util/io_posix.h
+@@ -12,7 +12,8 @@
+ 
+ // For non linux platform, the following macros are used only as place
+ // holder.
+-#if !(defined OS_LINUX) && !(defined CYGWIN)
++// #if !(defined OS_LINUX) && !(defined CYGWIN)
++#if (defined OS_ANDROID)
+ #define POSIX_FADV_NORMAL 0     /* [MC1] no further special treatment */
+ #define POSIX_FADV_RANDOM 1     /* [MC1] expect random page refs */
+ #define POSIX_FADV_SEQUENTIAL 2 /* [MC1] expect sequential page refs */
+diff --git a/util/options_helper.cc b/util/options_helper.cc
+index fa8dfb4..acd17f9 100644
+--- a/util/options_helper.cc
++++ b/util/options_helper.cc
+@@ -259,7 +259,7 @@ bool ParseBoolean(const std::string& type, const std::string& value) {
+ 
+ uint64_t ParseUint64(const std::string& value) {
+   size_t endchar;
+-#ifndef CYGWIN
++#if !(defined OS_ANDROID) && !(defined CYGWIN)
+   uint64_t num = std::stoull(value.c_str(), &endchar);
+ #else
+   char* endptr;
+@@ -297,7 +297,7 @@ uint32_t ParseUint32(const std::string& value) {
+ 
+ int ParseInt(const std::string& value) {
+   size_t endchar;
+-#ifndef CYGWIN
++#if !(defined OS_ANDROID) && !(defined CYGWIN)
+   int num = std::stoi(value.c_str(), &endchar);
+ #else
+   char* endptr;
+@@ -319,7 +319,7 @@ int ParseInt(const std::string& value) {
+ }
+ 
+ double ParseDouble(const std::string& value) {
+-#ifndef CYGWIN
++#if !(defined OS_ANDROID) && !(defined CYGWIN)
+   return std::stod(value);
+ #else
+   return std::strtod(value.c_str(), 0);

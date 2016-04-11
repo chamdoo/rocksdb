@@ -77,7 +77,7 @@ endif
 ifneq ($(DEBUG_LEVEL), 2)
 OPT += -O2 -fno-omit-frame-pointer
 ifneq ($(MACHINE),ppc64) # ppc64 doesn't support -momit-leaf-frame-pointer
-ifneq ($(TARGET_OS),OS_ANDROID_CROSSCOMPILE)
+ifneq ($(TARGET_OS),OS_ANDROID_CROSSCOMPILE) # android doesn't support this either
 OPT += -momit-leaf-frame-pointer
 endif
 endif

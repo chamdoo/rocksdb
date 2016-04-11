@@ -1,6 +1,5 @@
-diff -Naur ./toolchain/include/c++/4.8/arm-linux-androideabi/armv7-a/bits/c++config.h /home/cwchung/toolchain/include/c++/4.8/arm-linux-androideabi/armv7-a/bits/c++config.h
---- ./toolchain/include/c++/4.8/arm-linux-androideabi/armv7-a/bits/c++config.h	2014-10-07 02:30:32.000000000 -0400
-+++ /home/cwchung/toolchain/include/c++/4.8/arm-linux-androideabi/armv7-a/bits/c++config.h	2016-03-08 16:48:36.310392545 -0500
+--- a/toolchain/include/c++/4.8/arm-linux-androideabi/armv7-a/bits/c++config.h	2014-10-07 02:30:32.000000000 -0400
++++ b/toolchain/include/c++/4.8/arm-linux-androideabi/armv7-a/bits/c++config.h	2016-03-08 16:48:36.310392545 -0500
 @@ -1341,7 +1341,7 @@
  /* #undef _GLIBCXX_X86_RDRAND */
  
@@ -10,39 +9,13 @@ diff -Naur ./toolchain/include/c++/4.8/arm-linux-androideabi/armv7-a/bits/c++con
  
  #if defined (_GLIBCXX_HAVE__ACOSF) && ! defined (_GLIBCXX_HAVE_ACOSF)
  # define _GLIBCXX_HAVE_ACOSF 1
-diff -Naur ./toolchain/include/c++/4.8/arm-linux-androideabi/armv7-a/thumb/bits/c++config.h /home/cwchung/toolchain/include/c++/4.8/arm-linux-androideabi/armv7-a/thumb/bits/c++config.h
---- ./toolchain/include/c++/4.8/arm-linux-androideabi/armv7-a/thumb/bits/c++config.h	2014-10-07 02:30:32.000000000 -0400
-+++ /home/cwchung/toolchain/include/c++/4.8/arm-linux-androideabi/armv7-a/thumb/bits/c++config.h	2016-03-08 16:49:07.414393049 -0500
-@@ -1341,7 +1341,7 @@
- /* #undef _GLIBCXX_X86_RDRAND */
+--- a/toolchain/include/c++/4.8/arm-linux-androideabi/armv7-a/bits/gthr-default.h	2016-03-14 12:45:40.008962752 -0400
++++ b/toolchain/include/c++/4.8/arm-linux-androideabi/armv7-a/bits/gthr-default.h	2016-03-14 12:44:06.820247754 -0400
+@@ -46,6 +46,7 @@
+ #endif
  
- /* Define to 1 if mutex_timedlock is available. */
--#define _GTHREAD_USE_MUTEX_TIMEDLOCK 0
-+#define _GTHREAD_USE_MUTEX_TIMEDLOCK 1
+ #include <pthread.h>
++#include "android/timedlock.h"
  
- #if defined (_GLIBCXX_HAVE__ACOSF) && ! defined (_GLIBCXX_HAVE_ACOSF)
- # define _GLIBCXX_HAVE_ACOSF 1
-diff -Naur ./toolchain/include/c++/4.8/arm-linux-androideabi/bits/c++config.h /home/cwchung/toolchain/include/c++/4.8/arm-linux-androideabi/bits/c++config.h
---- ./toolchain/include/c++/4.8/arm-linux-androideabi/bits/c++config.h	2016-03-10 15:12:33.777100484 -0500
-+++ /home/cwchung/toolchain/include/c++/4.8/arm-linux-androideabi/bits/c++config.h	2016-03-08 16:49:30.470393423 -0500
-@@ -1341,7 +1341,7 @@
- /* #undef _GLIBCXX_X86_RDRAND */
- 
- /* Define to 1 if mutex_timedlock is available. */
--#define _GTHREAD_USE_MUTEX_TIMEDLOCK 0
-+#define _GTHREAD_USE_MUTEX_TIMEDLOCK 1
- 
- #if defined (_GLIBCXX_HAVE__ACOSF) && ! defined (_GLIBCXX_HAVE_ACOSF)
- # define _GLIBCXX_HAVE_ACOSF 1
-diff -Naur ./toolchain/include/c++/4.8/arm-linux-androideabi/thumb/bits/c++config.h /home/cwchung/toolchain/include/c++/4.8/arm-linux-androideabi/thumb/bits/c++config.h
---- ./toolchain/include/c++/4.8/arm-linux-androideabi/thumb/bits/c++config.h	2014-10-07 02:21:06.000000000 -0400
-+++ /home/cwchung/toolchain/include/c++/4.8/arm-linux-androideabi/thumb/bits/c++config.h	2016-03-08 16:49:45.958393674 -0500
-@@ -1341,7 +1341,7 @@
- /* #undef _GLIBCXX_X86_RDRAND */
- 
- /* Define to 1 if mutex_timedlock is available. */
--#define _GTHREAD_USE_MUTEX_TIMEDLOCK 0
-+#define _GTHREAD_USE_MUTEX_TIMEDLOCK 1
- 
- #if defined (_GLIBCXX_HAVE__ACOSF) && ! defined (_GLIBCXX_HAVE_ACOSF)
- # define _GLIBCXX_HAVE_ACOSF 1
+ #if ((defined(_LIBOBJC) || defined(_LIBOBJC_WEAK)) \
+      || !defined(_GTHREAD_USE_MUTEX_TIMEDLOCK))

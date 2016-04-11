@@ -10,6 +10,12 @@
 #include <string>
 #include <vector>
 
+namespace std {
+  int stoi (const string& str, size_t* idx =0, int base = 10);
+  int stod (const string& str, size_t* idx = 0);
+  unsigned long long stoull (const string& str, size_t* idx = 0, int base = 10);
+}
+
 namespace rocksdb {
 
 extern std::vector<std::string> StringSplit(const std::string& arg, char delim);

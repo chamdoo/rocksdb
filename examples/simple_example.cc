@@ -18,7 +18,7 @@ int main() {
   Options options;
   // Optimize RocksDB. This is the easiest way to get RocksDB to perform well
   options.IncreaseParallelism();
-  options.OptimizeLevelStyleCompaction();
+//  options.OptimizeLevelStyleCompaction(); -> this make line 27 fail
   // create the DB if it's not already present
   options.create_if_missing = true;
 

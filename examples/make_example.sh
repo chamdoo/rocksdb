@@ -1,13 +1,14 @@
-#!/bin/sh
+#!/bin/bash
 
 BASEDIR=$(cd $(dirname $0) ; pwd -P)
-export HOST=$BASEDIR/../toolchain/bin/arm-linux-androideabi
+export HOST=$BASEDIR/../../toolchain/bin/arm-linux-androideabi
 
 # To solve problems with std::future
 # https://lists.debian.org/debian-arm/2013/12/msg00007.html
 # http://stackoverflow.com/questions/22036396/stdpromise-error-on-cross-compiling
 export EXTRA_CXXFLAGS+=" -march=armv7-a -mtune=cortex-a9 -mfpu=neon"
-export EXTRA_CXXFLAGS+=" --sysroot=${BASEDIR}/../toolchain/sysroot" 
+export EXTRA_CXXFLAGS+=" --sysroot=${BASEDIR}/../../toolchain/sysroot" 
+export EXTRA_CXXFLAGS+=" -I${BASEDIR}/../include"
 export EXTRA_LDFLAGS+=" -march=armv7-a -Wl,--fix-cortex-a8"
 export EXTRA_LDFLAGS+=" -lstdc++"
 
@@ -31,4 +32,4 @@ export OBJDUMP="${HOST}-objdump"
 
 echo "CXX: ${CXX}"
 
-PORTABLE=1 make all
+PORTABLE=1 make $1

@@ -7,7 +7,7 @@
 
 #include <unistd.h>  // sysconf() - get CPU count
 
-const char DBPath[] = "/mnt/sdcard/rocksdb_tmprocksdb_simple_example";
+const char DBPath[] = "/mnt/sdcard/rocksdb_tmp/rocksdb_simple_example";
 const char DBBackupPath[] = "/mnt/sdcard/rocksdb_tmp/rocksdb_simple_example_backup";
 
 int main(int argc, char **argv) {
@@ -18,7 +18,7 @@ int main(int argc, char **argv) {
   // get RocksDB to perform well
   long cpus = sysconf(_SC_NPROCESSORS_ONLN);  // get # of online cores
   rocksdb_options_increase_parallelism(options, (int)(cpus));
-  rocksdb_options_optimize_level_style_compaction(options, 0);
+  // rocksdb_options_optimize_level_style_compaction(options, 0); // assertion fail @ 28
   // create the DB if it's not already present
   rocksdb_options_set_create_if_missing(options, 1);
 

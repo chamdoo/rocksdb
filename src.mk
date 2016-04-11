@@ -161,6 +161,8 @@ LIB_SOURCES =                                                   \
   util/vectorrep.cc                                             \
   util/xfunc.cc                                                 \
   util/xxhash.cc                                                \
+  include/android/timedlock.cc                                  \
+  include/android/string.cc
 
 TOOL_SOURCES = \
   tools/ldb_cmd.cc                                               \

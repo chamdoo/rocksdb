@@ -1,36 +1,15 @@
-#!/bin/bash
-
-if [ -z "$NDK" ]; then
-	echo "set up \$NDK PATH" >&2
-	exit 1
-fi
-
-BASEDIR=$(cd $(dirname $0) ; pwd -P)
+BASEDIR=$(pwd -P)
 TOOLCHAINDIR=$BASEDIR/../toolchain
-
-# toolchain: outside rocksdb (due to "make clean" issue)
-# gflags: inside rocksdb
-
-if [ ! -d $TOOLCHAINDIR ]; then
-	$NDK/build/tools/make-standalone-toolchain.sh --arch=arm --platform=android-18 --system=linux-x86_64 --install-dir=$TOOLCHAINDIR --stl=gnustl
-	cat toolchain.patch | (cd ..; patch -p1)
-fi
-
-if [ ! -d $BASEDIR/gflags ]; then
-	git clone https://github.com/cwchung90/gflags
-	(cd gflags; sh AndroidSetup.sh; cd build; make)
-fi
 
 # to support some STL functions which were not implemented in android-18 library
 export CPATH=$CPATH:$BASEDIR/include
 export EXTRA_CXXFLAGS="$EXTRA_CXXFLAGS -DROCKSDB_LITE"
 
-# to support gflags
+# to support gflags: should be installed @ ../gflags (compiled with namespace google)
 export EXTRA_CXXFLAGS="$EXTRA_CXXFLAGS -DGFLAGS=google"
-export EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lgflags -L./gflags/build/lib"
+export EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lgflags -L../gflags/build/lib"
 
 export HOST=$TOOLCHAINDIR/bin/arm-linux-androideabi
-
 
 # To solve problems with std::future
 # https://lists.debian.org/debian-arm/2013/12/msg00007.html
@@ -56,9 +35,3 @@ export RANLIB="${HOST}-ranlib"
 export STRIP="${HOST}-strip"
 export OBJCOPY="${HOST}-objcopy"
 export OBJDUMP="${HOST}-objdump"
-
-#PORTABLE=1 make shared_lib
-#PORTABLE=1 make release -j8
-#PORTABLE=1 DEBUG_LEVEL=0 make static_lib -j8
-PORTABLE=1 make db_test -j8
-#PORTABLE=1 DEBUG_LEVEL=0 make all -j8

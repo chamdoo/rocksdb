@@ -8,13 +8,15 @@
 
 #include <mutex>
 #include <string>
+#include <cstdlib>
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
 #include "rocksdb/options.h"
 #include "../util/string_util.h"
 
 using namespace rocksdb;
-std::string kDBPath = "/mnt/sdcard/rocksdb_tmp/rocksdb_compact_files_example";
+std::string kDBPath0 = "/mnt/sdcard/rocksdb_tmp/rocksdb_compact_files_example";
+std::string kDBPath1 = "/mnt/sdcard/tmp/rocksdb_compact_files_example";
 struct CompactionTask;
 
 // This is an example interface of external-compaction algorithm.
@@ -133,7 +135,18 @@ class FullCompactor : public Compactor {
   CompactionOptions compact_options_;
 };
 
-int main() {
+int main(int argc, char* argv[]) {
+  if (argc < 3) {
+    printf("need two arguments\n");
+    printf("./compact_files_example [maxi: 10000~99999] [0:sdcard 1:ram]\n");
+    return -1;
+  }
+
+  int maxi = atoi(argv[1]);
+  std::string kDBPath = (atoi(argv[2])==0)?kDBPath0:kDBPath1;
+
+
+
   Options options;
   options.create_if_missing = true;
   // Disable RocksDB background compaction.
@@ -152,14 +165,16 @@ int main() {
 
   // if background compaction is not working, write will stall
   // because of options.level0_stop_writes_trigger
-  for (int i = 1000; i < 99999; ++i) {
+  for (int i = 1000; i < maxi; ++i) { //99999
+    if ( (i%1000)==999 ) printf("write %d\n", i);
     db->Put(WriteOptions(), ToString(i),
                             std::string(500, 'a' + (i % 26)));
   }
 
   // verify the values are still there
   std::string value;
-  for (int i = 1000; i < 99999; ++i) {
+  for (int i = 1000; i < maxi; ++i) { //99999
+    if ( (i%1000)==999 )  printf("read %d\n", i);
     db->Get(ReadOptions(), ToString(i),
                            &value);
     assert(value == std::string(500, 'a' + (i % 26)));

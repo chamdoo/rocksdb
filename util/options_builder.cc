@@ -29,7 +29,7 @@ CompactionStyle PickCompactionStyle(size_t write_buffer_size,
       ::log(target_db_size / write_buffer_size) / ::log(kBytesForLevelMultiplier)));
 
   int expected_max_files_universal =
-      static_cast<int>(ceil(log2(target_db_size / write_buffer_size)));
+      static_cast<int>(ceil(log(target_db_size / write_buffer_size)/log(2)));
 
   const int kEstimatedLevel0FilesInLevelStyle = 2;
   // Estimate write amplification:
