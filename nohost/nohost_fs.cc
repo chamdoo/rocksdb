@@ -333,7 +333,12 @@ size_t NoHostFs::SequentialRead(int fd, char* buf, size_t size){
 		return -1;
 	}
 
+	if(entry->node->GetSize() - entry->r_offset == 0){
+		return 0;
+	}
+
 	viable_rsize = entry->node->GetSize() - entry->r_offset;
+
 	if(viable_rsize > size)
 		viable_rsize = size;
 	char* tmp = buf;
@@ -395,6 +400,10 @@ long int NoHostFs::Pread(int fd, char* buf, size_t size, uint64_t absolute_offse
 		return -1;
 	}
 	//printf("NoHostFs::Pread::%s\n", entry->node->name->c_str());
+	if(entry->node->GetSize() <= absolute_offset){
+		errno =EFAULT;
+		return -1;
+	}
 	uint64_t viable_size = entry->node->GetSize() - absolute_offset;
 	if(viable_size > size)
 		viable_size = size;
@@ -488,6 +497,14 @@ size_t NoHostFs::GetFreeBlockAddress(){
 		global_file_tree->free_page_bitmap->push_back(0);
 
 	global_file_tree->free_page_bitmap->at(i) = 1;
+
+/*	size_t j;
+	printf("==========================================NoHostFs::GetFreeBlockAddress=======================================================\n");
+	for(j = 0; j < global_file_tree->free_page_bitmap->size(); j++){
+			printf("%zu th : %d ,  start address : %zu\n", j, global_file_tree->free_page_bitmap->at(i), j*page_size);
+	}*/
+
+
 	return i*page_size;
 }
 std::string NoHostFs::GetAbsolutePath(){

@@ -13,12 +13,16 @@ std::vector<std::string> &split(const std::string &s, char delim, std::vector<st
 std::vector<std::string> split(const std::string &s, char delim);
 long int GetCurrentTime();
 
-struct FileSegInfo{
+class FileSegInfo{
+public:
 	size_t start_address;
 	size_t size;
 	FileSegInfo(size_t start_address_, size_t size_){
 		this->start_address =start_address_;
 		this->size =size_;
+	}
+	size_t GetStartAddress(){
+		return start_address;
 	}
 };
 
@@ -36,7 +40,11 @@ public:
 		lock = false;
 	}
 	~Node(){
-		if(isfile) delete file_info;
+		if(isfile){
+			for(unsigned int i = 0; i < file_info->size(); i++){
+				delete file_info->at(i);
+			}
+		}
 		else delete children;
 		delete name;
 	}
@@ -47,7 +55,7 @@ public:
 	std::list<Node*>* children;
 	std::vector<FileSegInfo*>* file_info;
 	int link_count;
-	unsigned long int GetSize();
+	uint64_t GetSize();
 	bool lock;
 };
 

@@ -49,7 +49,8 @@ public:
 	~NoHostFs(){
 		delete global_file_tree;
 		for(size_t i =0; i < open_file_table->size(); i++){
-			delete open_file_table->at(i);
+			if(open_file_table->at(i) != NULL)
+				delete open_file_table->at(i);
 		}
 		close(flash_fd);
 		//unlink("flash.db");

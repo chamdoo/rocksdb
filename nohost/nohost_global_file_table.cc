@@ -294,9 +294,7 @@ Node* GlobalFileTableTree::GetNode(std::string name){
 }
 
 int GlobalFileTableTree::FreeAllocatedPage(Node* node){
-
 	if(!node->isfile) return -1;
-
 	std::vector<FileSegInfo*>::iterator iter = node->file_info->begin();
 	size_t i = 0;
 	while(iter != node->file_info->end()){
@@ -305,6 +303,12 @@ int GlobalFileTableTree::FreeAllocatedPage(Node* node){
 			free_page_bitmap->at(i) = 0;
 		iter++;
 	}
+/*	printf("=====================================GlobalFileTableTree::FreeAllocatedPage===================================================\n");
+	i = 0;
+	for(i = 0; i < free_page_bitmap->size(); i++){
+			printf("%zu th : %d ,  start address : %zu\n", i, free_page_bitmap->at(i), i*page_size);
+	}*/
+
 	return 0;
 }
 
