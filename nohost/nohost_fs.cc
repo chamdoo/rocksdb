@@ -245,7 +245,8 @@ long int NoHostFs::Write(int fd, const char* buf, size_t size){
 	off_t offset = entry->w_offset % page_size;
 
 
-	if(entry->node->file_info->size() - 1 < last_page){
+	if(entry->node->file_info->size() - 1 < start_page){
+		printf("NoHostFs::Write: fileinfo size:%zu, last page:%zu", entry->node->file_info->size(), last_page);
 		entry->node->file_info->push_back(new FileSegInfo(GetFreeBlockAddress(), 0));
 	}
 
@@ -291,7 +292,8 @@ long int NoHostFs::Write(int fd, char* buf, size_t size){
 	size_t offset = entry->w_offset % page_size;
 
 
-	if(entry->node->file_info->size() - 1 < last_page){
+	if(entry->node->file_info->size() - 1 < start_page){
+		printf("NoHostFs::Write: fileinfo size:%zu, last page:%zu", entry->node->file_info->size(), last_page);
 		entry->node->file_info->push_back(new FileSegInfo(GetFreeBlockAddress(), 0));
 	}
 
