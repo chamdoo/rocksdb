@@ -33,8 +33,14 @@ public:
 		this->name =name_;
 		this->isfile = isfile_;
 		this->parent = parent_;
-		if(isfile_) file_info = new std::vector<FileSegInfo*>();
-		else children = new std::list<Node*>();
+		if(isfile_){
+			file_info = new std::vector<FileSegInfo*>();
+			file_info->clear();
+		}
+		else{
+			children = new std::list<Node*>();
+			children->clear();
+		}
 		last_modified_time = GetCurrentTime();
 		link_count = 1;
 		lock = false;

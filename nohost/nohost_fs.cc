@@ -102,8 +102,11 @@ int NoHostFs::CreateDir(std::string name){
 }
 int NoHostFs::CreateFile(std::string name){
 	////printf("Enter NoHostFs::CreateFile(%s)\n", name.c_str());
-	if(global_file_tree->CreateFile(name) == NULL)
+	Node* newfile = NULL;
+	if((newfile = global_file_tree->CreateFile(name)) == NULL)
 		return -1;
+	size_t start_address = GetFreeBlockAddress();
+	newfile->file_info->push_back(new FileSegInfo(start_address, 0));
 	return 0;
 }
 bool NoHostFs::DirExists(std::string name){
@@ -503,8 +506,8 @@ size_t NoHostFs::GetFreeBlockAddress(){
 	for(j = 0; j < global_file_tree->free_page_bitmap->size(); j++){
 			printf("%zu th : %d ,  start address : %zu\n", j, global_file_tree->free_page_bitmap->at(i), j*page_size);
 	}*/
-
-
+	printf("==========================================NoHostFs::GetFreeBlockAddress=======================================================\n");
+	global_file_tree->printAll();
 	return i*page_size;
 }
 std::string NoHostFs::GetAbsolutePath(){

@@ -8,7 +8,7 @@
 namespace rocksdb{
 
 // Node implementation
-unsigned long int Node::GetSize(){
+uint64_t Node::GetSize(){
 	if(isfile){
 		size_t total = 0;
 		for(size_t i = 0; i < file_info->size(); i++){
@@ -124,7 +124,7 @@ Node* GlobalFileTableTree::CreateFile(std::string name){
 		return NULL;
 	}
 	Node* newfile = new Node(new std::string(new_file_name), true, curdir);
-	curdir->children->push_front(newfile);
+	curdir->children->push_back(newfile);
 
 	return newfile;
 }
@@ -325,6 +325,18 @@ bool GlobalFileTableTree::print(Node* cur, std::string indent){
 		while(iter != cur->children->end()){
 			std::cout << indent << (*iter)->name->c_str() << ", type:" << (*iter)->isfile
 					<< std::endl;
+
+			if((*iter)->isfile){
+				printf("Allocated page::  size:%zu\n", (*iter)->file_info->size());
+
+				for(unsigned int i =0; i < (*iter)->file_info->size(); i++){
+					size_t size = ((*iter)->file_info)->at(i)->GetStartAddress();
+					printf("--------------------------------------------------------\n");
+					printf("%zu,    ", (size / page_size));
+					printf("--------------------------------------------------------\n");
+				}
+				printf("\n");
+			}
 			print((*iter), indent + "   ");
 			iter++;
 		}
