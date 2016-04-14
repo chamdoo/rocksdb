@@ -506,8 +506,8 @@ size_t NoHostFs::GetFreeBlockAddress(){
 	for(j = 0; j < global_file_tree->free_page_bitmap->size(); j++){
 			printf("%zu th : %d ,  start address : %zu\n", j, global_file_tree->free_page_bitmap->at(i), j*page_size);
 	}*/
-	printf("==========================================NoHostFs::GetFreeBlockAddress=======================================================\n");
-	global_file_tree->printAll();
+//	printf("==========================================NoHostFs::GetFreeBlockAddress=======================================================\n");
+//	global_file_tree->printAll();
 	return i*page_size;
 }
 std::string NoHostFs::GetAbsolutePath(){
