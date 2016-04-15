@@ -122,7 +122,7 @@ bool NoHostFs::DirExists(std::string name){
 	}
 	return true;
 }
-int NoHostFs::GetFileSize(std::string name){
+size_t NoHostFs::GetFileSize(std::string name){
 	////printf("NoHostFs::GetFileSize::name:%s\n", name.c_str());
 	Node* node = global_file_tree->GetNode(name);
 	if(node == NULL){

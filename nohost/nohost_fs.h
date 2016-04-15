@@ -74,7 +74,7 @@ public:
 	int CreateFile(std::string name);
 	int CreateDir(std::string name);
 	bool DirExists(std::string name);
-	int GetFileSize(std::string name);
+	size_t GetFileSize(std::string name);
 	long int GetFileModificationTime(std::string name);
 	bool Link(std::string src, std::string target);
 	bool IsEof(int dfd);
