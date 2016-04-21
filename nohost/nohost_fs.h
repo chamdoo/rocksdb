@@ -12,6 +12,25 @@
 
 #include "nohost_global_file_table.h"
 
+
+/*#define ENABLE_LIBFTL*/
+#ifdef ENABLE_LIBFTL
+
+extern "C" {
+#include "bdbm_drv.h"
+#include "umemory.h"
+#include "params.h"
+#include "ftl_params.h"
+#include "debug.h"
+#include "userio.h"
+#include "ufile.h"
+#include "devices.h"
+}
+
+extern bdbm_drv_info_t* _bdi;
+
+#endif
+
 namespace rocksdb{
 
 struct OpenFileEntry{
@@ -37,24 +56,8 @@ private:
 public:
 	GlobalFileTableTree* global_file_tree; // it must be private!!!!
 
-	NoHostFs(size_t assign_size){
-		global_file_tree = new GlobalFileTableTree(assign_size);
-		open_file_table = new std::vector<OpenFileEntry*>();
-		flash_fd = open("flash.db", O_CREAT | O_RDWR | O_TRUNC, 0666);
-		this->page_size = assign_size;
-        int fd = Open("/proc/sys/kernel/random/uuid", 'w');
-        Write(fd, "8691b88d-c84f-4bed-9d7b-7f3e08fe60f2", sizeof("8691b88d-c84f-4bed-9d7b-7f3e08fe60f2"));
-        Close(fd);
-	}
-	~NoHostFs(){
-		delete global_file_tree;
-		for(size_t i =0; i < open_file_table->size(); i++){
-			if(open_file_table->at(i) != NULL)
-				delete open_file_table->at(i);
-		}
-		close(flash_fd);
-		//unlink("flash.db");
-	}
+	NoHostFs(size_t assign_size);
+	~NoHostFs();
 	size_t GetFreeBlockAddress();
 	int Open(std::string name, char type);
 	long int Write(int fd, const char* buf, size_t size);

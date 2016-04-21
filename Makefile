@@ -119,7 +119,9 @@ am__v_AR_ = $(am__v_AR_$(AM_DEFAULT_VERBOSITY))
 am__v_AR_0 = @echo "  AR      " $@;
 am__v_AR_1 =
 
-AM_LINK = $(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS) $(COVERAGEFLAGS)
+AM_LINK = $(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS) $(COVERAGEFLAGS) ../bdbm_drv/frontend/user/libftl.a ../bdbm_drv/devices/libramdrive/libramdrive.a  
+
+
 
 # detect what platform we're building on
 dummy := $(shell (export ROCKSDB_ROOT="$(CURDIR)"; "$(CURDIR)/build_tools/build_detect_platform" "$(CURDIR)/make_config.mk"))
@@ -134,6 +136,31 @@ else
 # no debug info for IOS, that will make our library big
 OPT += -DNDEBUG
 endif
+
+# chamdoo
+OPT += -DROCKSDB_LITE
+LIBFTL_INC += \
+	-I../bdbm_drv/frontend/nvme \
+	-I../bdbm_drv/ftl \
+	-I../bdbm_drv/include \
+	-I../bdbm_drv/common/utils \
+	-I../bdbm_drv/common/3rd \
+	-I../bdbm_drv/devices/common \
+	-D USER_MODE \
+	-D HASH_BLOOM=20 \
+	-D CONFIG_ENABLE_MSG \
+	-D CONFIG_ENABLE_DEBUG \
+	-D USE_PMU \
+	-D USE_NEW_RMW \
+
+#LDFLAGS += \
+	#../bdbm_drv/frontend/user/libftl.a \
+	#../bdbm_drv/devices/libramdrive/libramdrive.a \
+
+
+CFLAGS += $(LIBFTL_INC) 
+CXXFLAGS += $(LIBFTL_INC) 
+# end
 
 ifneq ($(filter -DROCKSDB_LITE,$(OPT)),)
 	# found
@@ -220,6 +247,7 @@ util/build_version.cc: FORCE
 LIBOBJECTS = $(LIB_SOURCES:.cc=.o)
 LIBOBJECTS += $(TOOL_SOURCES:.cc=.o)
 MOCKOBJECTS = $(MOCK_SOURCES:.cc=.o)
+
 
 GTEST = $(GTEST_DIR)/gtest/gtest-all.o
 TESTUTIL = ./util/testutil.o
@@ -727,8 +755,13 @@ crc32c_test: util/crc32c_test.o $(LIBOBJECTS) $(TESTHARNESS)
 slice_transform_test: util/slice_transform_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
-db_test: db/db_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)
+#db_test: db/db_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)
+	#$(AM_LINK)
+
+# chamdoo
+db_test: db/db_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS) 
 	$(AM_LINK)
+# end
 
 db_log_iter_test: db/db_log_iter_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
@@ -1066,7 +1099,7 @@ CLEAN_FILES += jls
 JAVA_STATIC_FLAGS = -DZLIB -DBZIP2 -DSNAPPY -DLZ4
 JAVA_STATIC_INCLUDES = -I./zlib-1.2.8 -I./bzip2-1.0.6 -I./snappy-1.1.1 -I./lz4-r127/lib
 
-$(java_static_libobjects): jls/%.o: %.cc libz.a libbz2.a libsnappy.a liblz4.a
+$(java_static_libobjects): jls/%.o: %.cc libz.a libbz2.a libsnappy.a liblz4.a 
 	$(AM_V_CC)mkdir -p $(@D) && $(CXX) $(CXXFLAGS) $(JAVA_STATIC_FLAGS) $(JAVA_STATIC_INCLUDES) -fPIC -c $< -o $@ $(COVERAGEFLAGS)
 
 rocksdbjavastatic: $(java_static_libobjects)
