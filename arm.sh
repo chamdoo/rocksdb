@@ -7,18 +7,18 @@ fi
 
 BASEDIR=$(cd $(dirname $0) ; pwd -P)
 TOOLCHAINDIR=$BASEDIR/../toolchain
+GFLAGSDIR=$BASEDIR/../gflags
 
-# toolchain: outside rocksdb (due to "make clean" issue)
-# gflags: inside rocksdb
+# toolchain/gflags: outside rocksdb (due to "make clean" issue)
 
 if [ ! -d $TOOLCHAINDIR ]; then
-	$NDK/build/tools/make-standalone-toolchain.sh --arch=arm --platform=android-18 --system=linux-x86_64 --install-dir=$TOOLCHAINDIR --stl=gnustl
+	$NDK/build/tools/make-standalone-toolchain.sh --arch=arm --platform=android-16 --system=linux-x86_64 --install-dir=$TOOLCHAINDIR --stl=gnustl
 	cat toolchain.patch | (cd ..; patch -p1)
 fi
 
-if [ ! -d $BASEDIR/gflags ]; then
-	git clone https://github.com/cwchung90/gflags
-	(cd gflags; sh AndroidSetup.sh; cd build; make)
+if [ ! -d $GFLAGSDIR ]; then
+	(cd ..; git clone https://github.com/cwchung90/gflags; \
+	cd gflags; sh AndroidSetup.sh; cd build; make)
 fi
 
 # to support some STL functions which were not implemented in android-18 library
@@ -27,7 +27,7 @@ export EXTRA_CXXFLAGS="$EXTRA_CXXFLAGS -DROCKSDB_LITE"
 
 # to support gflags
 export EXTRA_CXXFLAGS="$EXTRA_CXXFLAGS -DGFLAGS=google"
-export EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lgflags -L./gflags/build/lib"
+export EXTRA_LDFLAGS="$EXTRA_LDFLAGS -L$GFLAGSDIR/build/lib -lgflags"
 
 export HOST=$TOOLCHAINDIR/bin/arm-linux-androideabi
 
