@@ -152,7 +152,7 @@ static size_t GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
 PosixRandomAccessFile::PosixRandomAccessFile(const std::string& fname, int fd,
                                              const EnvOptions& options, NoHostFs* nohost)
     : filename_(fname), fd_(fd), use_os_buffer_(options.use_os_buffer), nohost_(nohost) { // NOHOST
- // assert(!options.use_mmap_reads || sizeof(void*) < 8);
+  //assert(!options.use_mmap_reads || sizeof(void*) < 8);
 }
 
 PosixRandomAccessFile::~PosixRandomAccessFile() {nohost_->Close(fd_);} // NOHOST
@@ -166,9 +166,15 @@ Status PosixRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
   ssize_t r = -1;
   size_t left = n;
   char* ptr = scratch;
+
+  if(scratch == NULL){
+	  //printf("PosixRandomAccessFile: scratch is NULL@!!!!!\n");
+	  scratch = new char[n];
+	  ptr = scratch;
+  }
   while (left > 0) {
-	  //printf("PosixRandomAccessFile:Pread(offset:%zu, size=%zu\n", offset, left);
-    r = nohost_->Pread(fd_, ptr, left, static_cast<off_t>(offset));
+//	  printf("PosixRandomAccessFile:Pread(offset:%zu, size=%zu\n", offset, left);
+    r = nohost_->Pread(fd_, ptr, left, offset);
     if (r <= 0) {
       if (errno == EINTR) {
         continue;
@@ -179,7 +185,7 @@ Status PosixRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
     offset += r;
     left -= r;
   }
-  *result = Slice(scratch, (r < 0) ? 0 : r);
+  *result = Slice(scratch, (r < 0) ? 0 : n - left);
   if (r < 0) {
     // An error: return a non-ok status
     s = IOError(filename_, errno);
@@ -604,14 +610,14 @@ Status PosixWritableFile::Close() {
 Status PosixWritableFile::Flush() { return Status::OK(); }
 
 Status PosixWritableFile::Sync() {
-/*  if (fdatasync(fd_) < 0) {
+/*  if (fdatasync(nohost_->GetFd()) < 0) {
     return IOError(filename_, errno);
   }*/
   return Status::OK();
 }
 
 Status PosixWritableFile::Fsync() {
-/*  if (fsync(fd_) < 0) {
+/*  if (fsync(nohost_->GetFd()) < 0) {
     return IOError(filename_, errno);
   }*/
   return Status::OK();
@@ -636,6 +642,7 @@ Status PosixWritableFile::InvalidateCache(size_t offset, size_t length) {
 
 #ifdef ROCKSDB_FALLOCATE_PRESENT
 Status PosixWritableFile::Allocate(off_t offset, off_t len) {
+	//printf("PosixWritableFile::Allocate(%zu, %zu)\n",offset, len);
   TEST_KILL_RANDOM("PosixWritableFile::Allocate:0", rocksdb_kill_odds);
   IOSTATS_TIMER_GUARD(allocate_nanos);
   int alloc_status = 0;
@@ -651,11 +658,15 @@ Status PosixWritableFile::Allocate(off_t offset, off_t len) {
 }
 
 Status PosixWritableFile::RangeSync(off_t offset, off_t nbytes) {
-  if (sync_file_range(fd_, offset, nbytes, SYNC_FILE_RANGE_WRITE) == 0) {
+/*  if (sync_file_range(fd_, offset, nbytes, SYNC_FILE_RANGE_WRITE) == 0) {
     return Status::OK();
   } else {
     return IOError(filename_, errno);
+  }*/
+  if (fsync(nohost_->GetFd()) < 0) {
+    return IOError(filename_, errno);
   }
+	return Status::OK();
 }
 
 size_t PosixWritableFile::GetUniqueId(char* id, size_t max_size) const {

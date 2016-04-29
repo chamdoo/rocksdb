@@ -109,9 +109,14 @@ NoHostFs::NoHostFs(size_t assign_size){
 
 	flash_fd = open("flash.db", O_CREAT | O_RDWR | O_TRUNC, 0666);
 	this->page_size = assign_size;
-	int fd = Open("/proc/sys/kernel/random/uuid", 'w');
-	Write(fd, "8691b88d-c84f-4bed-9d7b-7f3e08fe60f2", sizeof("8691b88d-c84f-4bed-9d7b-7f3e08fe60f2"));
-	Close(fd);
+        int fd = Open("/proc/sys/kernel/random/uuid", 'w');
+        int fd2 = open("/proc/sys/kernel/random/uuid", O_RDONLY);
+        char buf[100];
+        ssize_t size=0;
+        if(fd2 != -1) size = read(fd2, buf, sizeof(buf));
+        Write(fd, buf, size);
+        Close(fd);
+        close(fd2);
 }
 
 NoHostFs::~NoHostFs(){
@@ -407,17 +412,12 @@ long int NoHostFs::Write(int fd, const char* buf, size_t size){
 	}
 
 	size_t start_page = entry->w_offset / page_size;
-	size_t last_page = (entry->w_offset + size - 1) / page_size;
 	off_t offset = entry->w_offset % page_size;
 
-	if(entry->node->file_info->size() - 1 < start_page){
-		printf("NoHostFs::Write: fileinfo size:%zu, last page:%zu", entry->node->file_info->size(), last_page);
+	if(entry->node->file_info->size() - 1 < start_page)
 		entry->node->file_info->push_back(new FileSegInfo(GetFreeBlockAddress(), 0));
-	}
 
 	finfo = entry->node->file_info->at(start_page);
-	off_t offsize = lseek(flash_fd, (finfo->start_address +offset), SEEK_SET);
-	if(offsize == -1){ std::cout << "lseek error\n"; return offsize; }
 
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::Write::name:%s fd:%d, buffer_size:%zu ,written_size=%zu, start_offset=%zu\n",
@@ -425,7 +425,7 @@ long int NoHostFs::Write(int fd, const char* buf, size_t size){
 #endif
 
 	if(page_size - offset < size){
-		wsize = write(flash_fd, buf, page_size - offset);
+		wsize = pwrite(flash_fd, buf, page_size - offset ,(finfo->start_address +offset));
 		if(wsize < 0){ std::cout << "write error\n"; return wsize; }
 #ifdef ENABLE_LIBFTL
 		libftl_write (
@@ -437,7 +437,7 @@ long int NoHostFs::Write(int fd, const char* buf, size_t size){
 		entry->w_offset += wsize;
 	}
 	else{
-		wsize = write(flash_fd, buf, size);
+		wsize = pwrite(flash_fd, buf, size, (finfo->start_address +offset));
 		if(wsize < 0){ std::cout << "write error\n"; return wsize; }
 #ifdef ENABLE_LIBFTL
 		libftl_write (
@@ -468,17 +468,12 @@ long int NoHostFs::Write(int fd, char* buf, size_t size){
 	ssize_t wsize = 0;
 
 	size_t start_page = entry->w_offset / page_size;
-	size_t last_page = (entry->w_offset + size - 1) / page_size;
 	size_t offset = entry->w_offset % page_size;
 
-	if(entry->node->file_info->size() - 1 < start_page){
-		printf("NoHostFs::Write: fileinfo size:%zu, last page:%zu", entry->node->file_info->size(), last_page);
+	if(entry->node->file_info->size() - 1 < start_page)
 		entry->node->file_info->push_back(new FileSegInfo(GetFreeBlockAddress(), 0));
-	}
 
 	finfo = entry->node->file_info->at(start_page);
-	off_t offsize = lseek(flash_fd, (finfo->start_address +offset), SEEK_SET);
-	if(offsize == -1){ std::cout << "lseek error\n"; return -1; }
 
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::Write::name:%s fd:%d, buffer_size:%zu ,written_size=%zu, start_offset=%zu\n",
@@ -486,7 +481,7 @@ long int NoHostFs::Write(int fd, char* buf, size_t size){
 #endif
 
 	if(page_size - offset < size){
-		wsize = write(flash_fd, curbuf, page_size - offset);
+		wsize = pwrite(flash_fd, curbuf, page_size - offset, (finfo->start_address +offset));
 		if(wsize < 0){ std::cout << "write error\n"; return wsize; }
 #ifdef ENABLE_LIBFTL
 		libftl_write (
@@ -498,7 +493,7 @@ long int NoHostFs::Write(int fd, char* buf, size_t size){
 		entry->w_offset += (off_t)wsize;
 	}
 	else{
-		wsize = write(flash_fd, curbuf, size);
+		wsize = pwrite(flash_fd, curbuf, size, (finfo->start_address +offset));
 		if(wsize < 0){ std::cout << "write error\n"; return wsize; }
 #ifdef ENABLE_LIBFTL
 		libftl_write (
@@ -527,6 +522,18 @@ size_t NoHostFs::SequentialRead(int fd, char* buf, size_t size){
 		return -1;
 	}
 
+	//===================================================================
+	std::string tname = *(entry->node->name);
+	if(tname.compare("uuid") == 0){
+		int fd2 = open("/proc/sys/kernel/random/uuid", O_RDONLY);
+	    char tmpbuf[100];
+	    ssize_t tsize=0;
+	    if(fd2 != -1) tsize = read(fd2, tmpbuf, sizeof(tmpbuf));
+	    if(tsize < 0) memcpy(buf, tmpbuf, tsize);
+	    close(fd2);
+	    return tsize;
+	}
+	//===================================================================
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::SequentialRead:: %s\n", entry->node->name->c_str ());
 #endif
@@ -546,7 +553,7 @@ size_t NoHostFs::SequentialRead(int fd, char* buf, size_t size){
 	size_t sum = 0;
 	while (left != 0) {
 		done = ReadHelper(fd, tmp, left);
-		if (done < 0) return 0;
+		if (done < 0) return -1;
 		left -= done;
 		sum += done;
         tmp += done;
@@ -570,10 +577,9 @@ long int NoHostFs::ReadHelper(int fd, char* buf, size_t size){
 
 
 	finfo = entry->node->file_info->at(start_page);
-	rsize = lseek(flash_fd, (finfo->start_address + offset), SEEK_SET);
-	if(rsize < 0){ std::cout << "lseek error\n"; return -1; }
+
 	if(page_size - offset < size){
-		rsize = read(flash_fd, buf, page_size - offset);
+		rsize = pread(flash_fd, buf, page_size - offset, (finfo->start_address + offset));
 		if(rsize < 0){ std::cout << "read error\n"; return rsize; }
 #ifdef ENABLE_LIBFTL
 		libftl_read (
@@ -584,7 +590,7 @@ long int NoHostFs::ReadHelper(int fd, char* buf, size_t size){
 		entry->r_offset += (off_t)rsize;
 	}
 	else{
-		rsize = read(flash_fd, buf, size);
+		rsize = pread(flash_fd, buf, size, (finfo->start_address + offset));
 		if(rsize < 0){ std::cout << "read error\n"; return rsize; }
 #ifdef ENABLE_LIBFTL
 		libftl_read (
@@ -614,8 +620,8 @@ long int NoHostFs::Pread(int fd, char* buf, size_t size, uint64_t absolute_offse
 	printf("NoHostFs::Pread::%s\n", entry->node->name->c_str());
 #endif
 	if(entry->node->GetSize() <= absolute_offset){
-		errno =EFAULT;
-		return -1;
+		errno = 0;
+		return 0; // eof
 	}
 	uint64_t viable_size = entry->node->GetSize() - absolute_offset;
 	if(viable_size > size)
@@ -633,14 +639,10 @@ long int NoHostFs::Pread(int fd, char* buf, size_t size, uint64_t absolute_offse
 
 	finfo = entry->node->file_info->at(start_page);
 
-	rsize = lseek(flash_fd, (off_t)(finfo->start_address + offset), SEEK_SET);
-	//printf("NoHostFs::Pread:: lseek(%d, %zu, SEEK_SET)\n", flash_fd, (off_t)(finfo->start_address + offset));
-	if(rsize < 0){ std::cout << "lseek error\n"; return -1; }
 	if(page_size - offset < viable_size){
-		//printf("NoHostFs::Pread:: read(%d, %s, %zu), start_offset=%zu\n",
-		//		flash_fd, buf, (size_t)(page_size - offset), (finfo->start_address + offset));
-		rsize = read(flash_fd, buf, (size_t)(page_size - offset));
-		if(rsize < 0){ return rsize; }
+		rsize = pread(flash_fd, buf, (uint64_t)(page_size - offset), (off_t)(finfo->start_address + offset));
+	//printf("NoHostFs::Pread:: read(%d, %s, %zu), start_offset=%zu\n", flash_fd, buf, viable_size, (finfo->start_address + offset));
+		if(rsize < 0) return rsize;
 #ifdef ENABLE_LIBFTL
 		libftl_read (
 			finfo->start_address + offset, 
@@ -649,10 +651,9 @@ long int NoHostFs::Pread(int fd, char* buf, size_t size, uint64_t absolute_offse
 #endif
 	}
 	else{
-		//printf("NoHostFs::Pread:: read(%d, %s, %zu), start_offset=%zu\n",
-		//		flash_fd, buf, (size_t)(viable_size), (finfo->start_address + offset));
-		rsize = read(flash_fd, buf, viable_size);
-		if(rsize < 0){ return rsize; }
+		rsize = pread(flash_fd, buf, viable_size, offset == 0 ? finfo->start_address : (finfo->start_address + offset));
+	//printf("NoHostFs::Pread:: read(%d, %s, %zu), start_offset=%zu\n", flash_fd, buf, viable_size, (finfo->start_address + offset));
+		if(rsize < 0) return rsize;
 #ifdef ENABLE_LIBFTL
 		libftl_read (
 			finfo->start_address + offset, 
@@ -747,6 +748,10 @@ size_t NoHostFs::GetFreeBlockAddress(){
 
 std::string NoHostFs::GetAbsolutePath(){
 	return global_file_tree->cwd;
+}
+
+int NoHostFs::GetFd(){
+	return flash_fd;
 }
 
 

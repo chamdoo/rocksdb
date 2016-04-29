@@ -195,14 +195,14 @@ class PosixEnv : public Env {
       if (fd < 0) {
   		//printf("Exit:Fail the NewRandomAccessFile(string %s)\n", fname.c_str());
         s = IOError(fname, errno);
-      }/* else if (options.use_mmap_reads && sizeof(void*) >= 8) {
+      } /*else if (options.use_mmap_reads && sizeof(void*) >= 8) {
         // Use of mmap for random reads has been removed because it
         // kills performance when storage is fast.
         // Use mmap when virtual address-space is plentiful.
         uint64_t size;
         s = GetFileSize(fname, &size);
         if (s.ok()) {
-          void* base = mmap(nullptr, size, PROT_READ, MAP_SHARED, fd, 0);
+          void* base = nohost->Mmap(nullptr, size, PROT_READ, MAP_SHARED, fd, 0);
           if (base != MAP_FAILED) {
             result->reset(new PosixMmapReadableFile(fd, fname, base,
                                                     size, options));
@@ -210,8 +210,7 @@ class PosixEnv : public Env {
             s = IOError(fname, errno);
           }
         }
-        close(fd);
-        nohost->Close(nfd); // NOHOST
+        nohost->Close(fd); // NOHOST
       }*/ else {
   		//printf("Exit:Success the NewRandomAccessFile(string %s)\n", fname.c_str());
         result->reset(new PosixRandomAccessFile(fname, fd, options, nohost)); // NOHOST
@@ -477,7 +476,7 @@ class PosixEnv : public Env {
 
     // NOHOST
     uint64_t mtime = 0;
-    if ((mtime = nohost->GetFileModificationTime(fname)) != 1) {
+    if ((mtime = nohost->GetFileModificationTime(fname)) == 0) {
       	//printf("Exit:Fail the GetFileModificationTime(string %s)\n", fname.c_str());
       return IOError(fname, errno);
     }
@@ -685,7 +684,7 @@ class PosixEnv : public Env {
 
     *output_path = nret;
 
-  	printf("original absol:%s, nohost absol:%s\n", output_path->c_str(), nret.c_str()); // NOHOST
+  	//printf("original absol:%s, nohost absol:%s\n", output_path->c_str(), nret.c_str()); // NOHOST
     return Status::OK();
   }
 
