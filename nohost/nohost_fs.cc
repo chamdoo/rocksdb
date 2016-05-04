@@ -1,7 +1,7 @@
 #include "nohost_fs.h"
 #include <string.h>
 
-#define ENABLE_DEBUG
+//#define ENABLE_DEBUG
 
 namespace rocksdb{
 
@@ -109,14 +109,6 @@ NoHostFs::NoHostFs(size_t assign_size){
 
 	flash_fd = open("flash.db", O_CREAT | O_RDWR | O_TRUNC, 0666);
 	this->page_size = assign_size;
-        int fd = Open("/proc/sys/kernel/random/uuid", 'w');
-        int fd2 = open("/proc/sys/kernel/random/uuid", O_RDONLY);
-        char buf[100];
-        ssize_t size=0;
-        if(fd2 != -1) size = read(fd2, buf, sizeof(buf));
-        Write(fd, buf, size);
-        Close(fd);
-        close(fd2);
 }
 
 NoHostFs::~NoHostFs(){
@@ -180,7 +172,7 @@ int NoHostFs::Rename(std::string old_name, std::string name){
 #endif
 
 	Node* old_node = global_file_tree->GetNode(old_name);
-	std::vector<std::string> path_list = split(name, '/');
+	std::vector<std::string> path_list = split(name, '*');
 	if(old_node == NULL){
 		errno = ENOENT; // No such file or directory
 		return -1;
@@ -435,6 +427,7 @@ long int NoHostFs::Write(int fd, const char* buf, size_t size){
 #endif
 		finfo->size += wsize;
 		entry->w_offset += wsize;
+		entry->node->size += (off_t)wsize;
 	}
 	else{
 		wsize = pwrite(flash_fd, buf, size, (finfo->start_address +offset));
@@ -447,6 +440,7 @@ long int NoHostFs::Write(int fd, const char* buf, size_t size){
 #endif
 		finfo->size += (size_t)wsize;
 		entry->w_offset += (off_t)wsize;
+		entry->node->size += (off_t)wsize;
 	}
 
 	entry->node->last_modified_time = GetCurrentTime();

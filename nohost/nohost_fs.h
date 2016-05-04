@@ -85,7 +85,7 @@ public:
 	int Free(Node* node);
 	int Lock(std::string name, bool lock);
 	std::string GetAbsolutePath();
-	int  GetFd();
+    int  GetFd();
 
 };
 

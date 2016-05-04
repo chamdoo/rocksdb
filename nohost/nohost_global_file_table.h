@@ -15,13 +15,15 @@ long int GetCurrentTime();
 
 class FileSegInfo{
 public:
-	size_t start_address;
-	size_t size;
-	FileSegInfo(size_t start_address_, size_t size_){
+	uint64_t start_address;
+	uint64_t size;
+	int link_count;
+	FileSegInfo(size_t start_address_, uint64_t size_){
 		this->start_address =start_address_;
 		this->size =size_;
+		link_count = 1;
 	}
-	size_t GetStartAddress(){
+	uint64_t GetStartAddress(){
 		return start_address;
 	}
 };
@@ -42,16 +44,22 @@ public:
 			children->clear();
 		}
 		last_modified_time = GetCurrentTime();
-		link_count = 1;
 		lock = false;
+		link_count = 1;
+		size = 0;
 	}
 	~Node(){
 		if(isfile){
-			for(unsigned int i = 0; i < file_info->size(); i++){
-				delete file_info->at(i);
+			if(file_info->at(0)->link_count == 0){
+				for(unsigned int i = 0; i < file_info->size(); i++){
+					delete file_info->at(i);
+				}
+				delete file_info;
 			}
 		}
-		else delete children;
+		else{
+			if(link_count == 0) delete children;
+		}
 		delete name;
 	}
 	Node* parent;
@@ -60,9 +68,10 @@ public:
 	long int last_modified_time;
 	std::list<Node*>* children;
 	std::vector<FileSegInfo*>* file_info;
-	int link_count;
 	uint64_t GetSize();
 	bool lock;
+	int link_count;
+	uint64_t size;
 };
 
 class GlobalFileTableTree{
@@ -107,7 +116,7 @@ public:
 	std::string cwd;
 private:
 	Node* root;
-	size_t page_size;
+	uint64_t page_size;
 
 
 };
