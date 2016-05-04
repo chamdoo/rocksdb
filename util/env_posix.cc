@@ -74,6 +74,7 @@ bool IsSstExtention(std::string name){
 	return (ex.compare("sst") == 0 || ex.compare("ldb") == 0);
 }
 
+extern port::Mutex mutex_nohost;
 namespace {
 
 ThreadStatusUpdater* CreateThreadStatusUpdater() {
@@ -83,7 +84,6 @@ ThreadStatusUpdater* CreateThreadStatusUpdater() {
 // list of pathnames that are locked
 static std::set<std::string> lockedFiles;
 static port::Mutex mutex_lockedFiles;
-static port::Mutex mutex_nohost;
 
 static int LockOrUnlock(const std::string& fname, int fd, bool lock) {
   mutex_lockedFiles.Lock();

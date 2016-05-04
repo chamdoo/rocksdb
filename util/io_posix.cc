@@ -38,9 +38,7 @@ using namespace std;
 
 namespace rocksdb {
 
-static port::Mutex mutex_lock_seq;
-static port::Mutex mutex_lock_ran;
-static port::Mutex mutex_lock_wri;
+port::Mutex mutex_nohost;
 // A wrapper for fadvise, if the platform doesn't support fadvise,
 // it will simply return Status::NotSupport.
 int Fadvise(int fd, off_t offset, size_t len, int advice) {
@@ -677,7 +675,11 @@ NoHostSequentialFile::NoHostSequentialFile(const std::string& fname, int fd,
       use_os_buffer_(options.use_os_buffer),
 	  nohost_(nohost){} // NOHOST
 
-NoHostSequentialFile::~NoHostSequentialFile() {nohost_->Close(fd_); } // NOHOST
+NoHostSequentialFile::~NoHostSequentialFile() {
+    mutex_nohost.Lock();
+    nohost_->Close(fd_);
+    mutex_nohost.Unlock();
+} // NOHOST
 
 Status NoHostSequentialFile::Read(size_t n, Slice* result, char* scratch) {
 
@@ -685,9 +687,9 @@ Status NoHostSequentialFile::Read(size_t n, Slice* result, char* scratch) {
   Status s;
   size_t r = 0;
 
- // mutex_lock_seq.Lock();
+  mutex_nohost.Lock();
   r = nohost_->SequentialRead(fd_, scratch, n);
- // mutex_lock_seq.Unlock();
+  mutex_nohost.Unlock();
 
   *result = Slice(scratch, r);
   if (r < n) {
@@ -729,7 +731,11 @@ NoHostRandomAccessFile::NoHostRandomAccessFile(const std::string& fname, int fd,
     : filename_(fname), fd_(fd), use_os_buffer_(options.use_os_buffer), nohost_(nohost) { // NOHOST
 }
 
-NoHostRandomAccessFile::~NoHostRandomAccessFile() {nohost_->Close(fd_);} // NOHOST
+NoHostRandomAccessFile::~NoHostRandomAccessFile() {
+	mutex_nohost.Lock();
+    nohost_->Close(fd_);
+	mutex_nohost.Unlock();
+} // NOHOST
 
 Status NoHostRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
                                    char* scratch) const {
@@ -748,9 +754,9 @@ Status NoHostRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
   }
   while (left > 0) {
 	  //printf("NoHostRandomAccessFile:Pread(offset:%zu, size=%zu\n", offset, left);
-	//  mutex_lock_seq.Lock();
+	mutex_nohost.Lock();
     r = nohost_->Pread(fd_, ptr, left, offset);
-   // mutex_lock_seq.Unlock();
+    mutex_nohost.Unlock();
     if (r <= 0) {
       if (errno == EINTR) {
         continue;
@@ -817,9 +823,9 @@ Status NoHostWritableFile::Append(const Slice& data) {
   size_t left = data.size();
   size_t sum = 0;
   while (left != 0) {
-	  mutex_lock_seq.Lock();
+	mutex_nohost.Lock();
     ssize_t done = nohost_->Write(fd_, src, left);
-    mutex_lock_seq.Unlock();
+    mutex_nohost.Unlock();
     if (done < 0) {
         if (errno == EINTR) {
           continue;
@@ -846,9 +852,11 @@ Status NoHostWritableFile::Close() {
   pfd_ = -1;
 
   // NOHOST
+  mutex_nohost.Lock();
   if (nohost_->Close(fd_) < 0) {
 	ns = IOError(filename_, errno);
   }
+  mutex_nohost.Unlock();
   fd_ = -1;
   // NOHOST
 
