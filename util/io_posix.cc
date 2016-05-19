@@ -772,7 +772,7 @@ Status NoHostRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
     // An error: return a non-ok status
     s = IOError(filename_, errno);
   }
-  //printf("NoHostRandomAccessFile:Pread(offset:%zu, size=%zu, %s\n", offset, n, result->data_);
+  printf("NoHostRandomAccessFile:Pread(offset:%zu, size=%zu, %s\n", offset, n, result->data_);
   // NOHOST
 /*  if(filename_.compare("/tmp/rocksdbtest-1000/db_test/000004.sst") == 0){
 	  int fd = open("004.sst.pread", O_CREAT|O_RDWR|O_APPEND, 0644);

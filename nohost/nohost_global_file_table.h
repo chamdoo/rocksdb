@@ -28,6 +28,23 @@ public:
 	}
 };
 
+class FileBuffer{
+public:
+	char* buffer;
+	uint64_t b_size;
+	uint64_t start_address;
+	uint64_t offset;
+	FileBuffer(){
+		buffer = new char[4096];
+		b_size = 0;
+		start_address = 0;
+		offset = 0;
+	}
+	~FileBuffer(){
+		delete [] buffer;
+	}
+};
+
 class Node{
 public:
 	Node(std::string* name_, bool isfile_, Node* parent_) :
@@ -47,6 +64,7 @@ public:
 		lock = false;
 		link_count = 1;
 		size = 0;
+		file_buf = new FileBuffer();
 	}
 	~Node(){
 		if(isfile){
@@ -55,6 +73,7 @@ public:
 					delete file_info->at(i);
 				}
 				delete file_info;
+				delete file_buf;
 			}
 		}
 		else{
@@ -68,6 +87,7 @@ public:
 	long int last_modified_time;
 	std::list<Node*>* children;
 	std::vector<FileSegInfo*>* file_info;
+	FileBuffer* file_buf;
 	uint64_t GetSize();
 	bool lock;
 	int link_count;

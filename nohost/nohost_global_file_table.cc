@@ -10,7 +10,7 @@ namespace rocksdb{
 // Node implementation
 uint64_t Node::GetSize(){
 	if(isfile){
-		return size;
+		return size + file_buf->b_size;
 	}
 	else{
 		return children->size();
@@ -149,6 +149,8 @@ Node* GlobalFileTableTree::Link(std::string src, std::string target){
 		targetnode = CreateFile(target);
 		delete targetnode->file_info;
 		targetnode->file_info = srcnode->file_info;
+		delete targetnode->file_buf;
+		targetnode->file_buf = srcnode->file_buf;
 		targetnode->size = srcnode->size;
 		targetnode->last_modified_time = srcnode->last_modified_time;
 	}

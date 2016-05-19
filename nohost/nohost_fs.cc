@@ -88,6 +88,30 @@ static int libftl_read (uint64_t boffset, uint64_t bsize, uint8_t* data)
 }
 #endif
 
+std::string RecoverName(std::string name){
+	std::vector<std::string> path_list = split(name, '/');
+	std::vector<std::string>::iterator iter = path_list.begin();
+	while(iter != path_list.end()){
+		if(iter->compare("") == 0){
+			path_list.erase(iter);
+			continue;
+		}
+		iter++;
+	}
+	std::string re_name = "";
+	iter = path_list.begin();
+	while(iter != path_list.end()){
+		re_name = re_name + "/" + (*iter);
+		iter++;
+	}
+	if(re_name.substr(0, 2).compare("/.") == 0){
+		char the_path[256];
+		std::string cwd(getcwd(the_path, 256));
+		re_name = cwd + re_name.substr(2, re_name.size()-2);
+	}
+	return re_name;
+}
+
 NoHostFs::NoHostFs(size_t assign_size){
 	global_file_tree = new GlobalFileTableTree(assign_size);
 	open_file_table = new std::vector<OpenFileEntry*>();
@@ -129,6 +153,7 @@ NoHostFs::~NoHostFs(){
 
 
 int NoHostFs::Lock(std::string name, bool lock){
+	name = RecoverName(name);
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::Lock::name:%s\n", name.c_str());
 #endif
@@ -156,6 +181,7 @@ int NoHostFs::Close(int fd){
 	return 0;
 }
 int NoHostFs::Access(std::string name){
+	name = RecoverName(name);
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::Access::name:%s\n", name.c_str());
 #endif
@@ -167,6 +193,8 @@ int NoHostFs::Access(std::string name){
 	return 0;
 }
 int NoHostFs::Rename(std::string old_name, std::string name){
+	name = RecoverName(name);
+	old_name = RecoverName(old_name);
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::Rename::%s, %s\n", old_name.c_str(), name.c_str());
 #endif
@@ -225,18 +253,21 @@ Node* NoHostFs::ReadDir(int fd){
 	return ret;
 }
 int NoHostFs::DeleteFile(std::string name){
+	name = RecoverName(name);
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::DeleteFile::name:%s\n", name.c_str());
 #endif
 	return global_file_tree->DeleteFile(name);
 }
 int NoHostFs::DeleteDir(std::string name){
+	name = RecoverName(name);
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::DeleteDir::name:%s\n", name.c_str());
 #endif
 	return global_file_tree->DeleteDir(name);
 }
 int NoHostFs::CreateDir(std::string name){
+	name = RecoverName(name);
 #ifdef ENABLE_DEBUG
 	printf("Enter NoHostFs::CreateDir(%s)\n", name.c_str());
 #endif
@@ -245,6 +276,7 @@ int NoHostFs::CreateDir(std::string name){
 	return 0;
 }
 int NoHostFs::CreateFile(std::string name){
+	name = RecoverName(name);
 #ifdef ENABLE_DEBUG
 	printf("Enter NoHostFs::CreateFile(%s)\n", name.c_str());
 #endif
@@ -256,6 +288,7 @@ int NoHostFs::CreateFile(std::string name){
 	return 0;
 }
 bool NoHostFs::DirExists(std::string name){
+	name = RecoverName(name);
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::DirExists::name:%s\n", name.c_str());
 #endif
@@ -271,6 +304,7 @@ bool NoHostFs::DirExists(std::string name){
 	return true;
 }
 size_t NoHostFs::GetFileSize(std::string name){
+	name = RecoverName(name);
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::GetFileSize::name:%s\n", name.c_str());
 #endif
@@ -282,6 +316,7 @@ size_t NoHostFs::GetFileSize(std::string name){
 	return node->GetSize();
 }
 long int NoHostFs::GetFileModificationTime(std::string name){
+	name = RecoverName(name);
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::GetFileModificationTime::name:%s\n", name.c_str());
 #endif
@@ -294,6 +329,8 @@ long int NoHostFs::GetFileModificationTime(std::string name){
 }
 
 bool NoHostFs::Link(std::string src, std::string target){
+	src = RecoverName(src);
+	target = RecoverName(target);
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::Link::%s => %s\n", src.c_str(), target.c_str());
 #endif
@@ -339,6 +376,7 @@ off_t NoHostFs::Lseek(int fd, off_t n){
 }
 
 int NoHostFs::Open(std::string name, char type){
+	name = RecoverName(name);
 	Node* ret = NULL;
 	size_t start_address;
 
@@ -390,6 +428,68 @@ int NoHostFs::Open(std::string name, char type){
 	return open_file_table->size() - 1;
 }
 
+
+
+long int NoHostFs::BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const char* buf, uint64_t dsize, uint64_t offset, size_t page_unit){
+	ssize_t wsize=0;
+	ssize_t wsizet=0;
+	size_t bsize = entry->node->file_buf->b_size;
+	size_t S = bsize + dsize;
+	char* tbuf = entry->node->file_buf->buffer;
+
+	if(S <= page_unit){
+		tbuf += bsize;
+		memcpy(tbuf, buf, dsize);
+		entry->node->file_buf->b_size += dsize;
+		entry->node->file_buf->start_address = finfo->start_address;
+		entry->node->file_buf->offset = offset - finfo->start_address;
+		wsize = dsize;
+		if(S == page_unit){
+			wsizet = pwrite(flash_fd, entry->node->file_buf->buffer, page_unit , offset);
+			if(wsizet < 0){ std::cout << "write error\n"; return wsizet; }
+			entry->w_offset += (off_t)wsizet;
+			entry->node->size += (uint64_t)wsizet;
+			finfo->size += (uint64_t)wsizet;
+			entry->node->file_buf->b_size = 0;
+		}
+		return wsize;
+	}
+	else{
+		if(bsize != 0){
+			tbuf += bsize;
+			memcpy(tbuf, buf, (page_unit - bsize));
+			wsize = (page_unit - bsize);
+			wsizet= pwrite(flash_fd, entry->node->file_buf->buffer, page_unit , offset);
+			if(wsizet < 0){ std::cout << "write error\n"; return wsizet; }
+			entry->w_offset += (off_t)wsizet;
+			entry->node->size += (uint64_t)wsizet;
+			finfo->size += (uint64_t)wsizet;
+			entry->node->file_buf->b_size = 0;
+			offset += (off_t)wsizet;
+			buf += (page_unit - bsize);
+			dsize = dsize - (page_unit - bsize);
+		}
+
+		wsizet = pwrite(flash_fd, buf, ((dsize/page_unit)*page_unit) , offset);
+		if(wsizet < 0){ std::cout << "write error\n"; return wsizet; }
+		entry->w_offset += (off_t)wsizet;
+		finfo->size += (uint64_t)wsizet;
+		entry->node->size += (uint64_t)wsizet;
+		offset += (off_t)wsizet;
+		wsize += wsizet;
+
+		buf += (dsize/page_unit)*page_unit;
+		memcpy(entry->node->file_buf->buffer, buf, dsize%page_unit);
+		entry->node->file_buf->b_size = dsize % page_unit;
+		entry->node->file_buf->start_address = finfo->start_address;
+		entry->node->file_buf->offset = offset - finfo->start_address;
+		wsize += dsize%page_unit;
+	}
+	return wsize;
+
+}
+
+
 long int NoHostFs::Write(int fd, const char* buf, size_t size){
 	if(fd < 0 || (int)open_file_table->size() <= fd){
 		errno = EBADF; // Bad file number
@@ -417,30 +517,32 @@ long int NoHostFs::Write(int fd, const char* buf, size_t size){
 #endif
 
 	if(page_size - offset < size){
-		wsize = pwrite(flash_fd, buf, page_size - offset ,(finfo->start_address +offset));
-		if(wsize < 0){ std::cout << "write error\n"; return wsize; }
+		wsize = BufferWrite(entry, finfo, buf, page_size - offset, (finfo->start_address +offset), 4096);
+		//wsize = pwrite(flash_fd, buf, page_size - offset ,(finfo->start_address +offset));
+		//if(wsize < 0){ std::cout << "write error\n"; return wsize; }
 #ifdef ENABLE_LIBFTL
 		libftl_write (
 			finfo->start_address + offset, 
 			page_size - offset,
 			(uint8_t*)buf);
 #endif
-		finfo->size += wsize;
-		entry->w_offset += wsize;
-		entry->node->size += (off_t)wsize;
+		//finfo->size += wsize;
+		//entry->w_offset += wsize;
+		//entry->node->size += (off_t)wsize;
 	}
 	else{
-		wsize = pwrite(flash_fd, buf, size, (finfo->start_address +offset));
-		if(wsize < 0){ std::cout << "write error\n"; return wsize; }
+		wsize = BufferWrite(entry, finfo, buf, size, (finfo->start_address +offset), 4096);
+		//wsize = pwrite(flash_fd, buf, size, (finfo->start_address +offset));
+		//if(wsize < 0){ std::cout << "write error\n"; return wsize; }
 #ifdef ENABLE_LIBFTL
 		libftl_write (
 			finfo->start_address + offset, 
 			size,
 			(uint8_t*)buf);
 #endif
-		finfo->size += (size_t)wsize;
-		entry->w_offset += (off_t)wsize;
-		entry->node->size += (off_t)wsize;
+		//finfo->size += (size_t)wsize;
+		//entry->w_offset += (off_t)wsize;
+		//entry->node->size += (off_t)wsize;
 	}
 
 	entry->node->last_modified_time = GetCurrentTime();
@@ -458,7 +560,6 @@ long int NoHostFs::Write(int fd, char* buf, size_t size){
 		return -1;
 	}
 	FileSegInfo* finfo = NULL;
-	char* curbuf = buf;
 	ssize_t wsize = 0;
 
 	size_t start_page = entry->w_offset / page_size;
@@ -475,28 +576,30 @@ long int NoHostFs::Write(int fd, char* buf, size_t size){
 #endif
 
 	if(page_size - offset < size){
-		wsize = pwrite(flash_fd, curbuf, page_size - offset, (finfo->start_address +offset));
-		if(wsize < 0){ std::cout << "write error\n"; return wsize; }
+		wsize = BufferWrite(entry, finfo, buf, page_size - offset, (finfo->start_address +offset), 4096);
+		//wsize = pwrite(flash_fd, curbuf, page_size - offset, (finfo->start_address +offset));
+		//if(wsize < 0){ std::cout << "write error\n"; return wsize; }
 #ifdef ENABLE_LIBFTL
 		libftl_write (
 			finfo->start_address + offset, 
 			page_size - offset,
 			(uint8_t*)curbuf);
 #endif
-		finfo->size += (size_t)wsize;
-		entry->w_offset += (off_t)wsize;
+		//finfo->size += (size_t)wsize;
+		//entry->w_offset += (off_t)wsize;
 	}
 	else{
-		wsize = pwrite(flash_fd, curbuf, size, (finfo->start_address +offset));
-		if(wsize < 0){ std::cout << "write error\n"; return wsize; }
+		wsize = BufferWrite(entry, finfo, buf, size, (finfo->start_address +offset), 4096);
+		//wsize = pwrite(flash_fd, curbuf, size, (finfo->start_address +offset));
+		//if(wsize < 0){ std::cout << "write error\n"; return wsize; }
 #ifdef ENABLE_LIBFTL
 		libftl_write (
 			finfo->start_address + offset, 
 			size,
 			(uint8_t*)curbuf);
 #endif
-		finfo->size += (size_t)wsize;
-		entry->w_offset += (off_t)wsize;
+		//finfo->size += (size_t)wsize;
+		//entry->w_offset += (off_t)wsize;
 	}
 
 	entry->node->last_modified_time = GetCurrentTime();
@@ -555,6 +658,44 @@ size_t NoHostFs::SequentialRead(int fd, char* buf, size_t size){
 	return sum;
 }
 
+long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* buf, uint64_t dsize, uint64_t offset, size_t page_unit, bool ispread){
+	ssize_t rsize;
+	size_t bsize = entry->node->file_buf->b_size;
+	size_t buf_start = entry->node->file_buf->start_address;
+	size_t buf_offset = entry->node->file_buf->offset;
+	size_t cur_start = finfo->start_address;
+	char* tbuf = entry->node->file_buf->buffer;
+
+	if(bsize == 0 || buf_start != cur_start){
+		rsize = pread(flash_fd, buf, dsize, offset);
+		if(rsize < 0){ std::cout << "read error\n"; return rsize; }
+		if(!ispread) entry->r_offset += (off_t)rsize;
+	}
+	else{
+		if(dsize + offset < buf_start + buf_offset){
+			rsize = pread(flash_fd, buf, dsize, offset);
+			if(rsize < 0){ std::cout << "read error\n"; return rsize; }
+			if(!ispread) entry->r_offset += (off_t)rsize;
+		}
+		else if(offset >= buf_start + buf_offset){
+			tbuf += (offset - (buf_start + buf_offset));
+			memcpy(buf, tbuf, dsize);
+			if(!ispread) entry->r_offset += (off_t)dsize;
+			rsize = (off_t)dsize;
+		}
+		else{
+			rsize = pread(flash_fd, buf,((buf_start + buf_offset) - offset), offset);
+			if(rsize < 0){ std::cout << "read error\n"; return rsize; }
+			buf += rsize;
+			memcpy(buf, tbuf, (offset + dsize) - (buf_start + buf_offset));
+			if(!ispread) entry->r_offset += (off_t)((offset + dsize) - (buf_start + buf_offset));
+			rsize += (off_t)((offset + dsize) - (buf_start + buf_offset));
+		}
+	}
+	return rsize;
+
+}
+
 long int NoHostFs::ReadHelper(int fd, char* buf, size_t size){
 	OpenFileEntry* entry = open_file_table->at(fd);
 	FileSegInfo* finfo = NULL;
@@ -573,26 +714,28 @@ long int NoHostFs::ReadHelper(int fd, char* buf, size_t size){
 	finfo = entry->node->file_info->at(start_page);
 
 	if(page_size - offset < size){
-		rsize = pread(flash_fd, buf, page_size - offset, (finfo->start_address + offset));
-		if(rsize < 0){ std::cout << "read error\n"; return rsize; }
+		rsize = BufferRead(entry, finfo, buf, page_size - offset, (finfo->start_address + offset), 4096, false);
+		//rsize = pread(flash_fd, buf, page_size - offset, (finfo->start_address + offset));
+		//if(rsize < 0){ std::cout << "read error\n"; return rsize; }
 #ifdef ENABLE_LIBFTL
 		libftl_read (
 			finfo->start_address + offset, 
 			page_size - offset,
 			(uint8_t*)buf);
 #endif
-		entry->r_offset += (off_t)rsize;
+		//entry->r_offset += (off_t)rsize;
 	}
 	else{
-		rsize = pread(flash_fd, buf, size, (finfo->start_address + offset));
-		if(rsize < 0){ std::cout << "read error\n"; return rsize; }
+		rsize = BufferRead(entry, finfo, buf, size, (finfo->start_address + offset), 4096, false);
+		//rsize = pread(flash_fd, buf, size, (finfo->start_address + offset));
+		//if(rsize < 0){ std::cout << "read error\n"; return rsize; }
 #ifdef ENABLE_LIBFTL
 		libftl_read (
 			finfo->start_address + offset, 
 			size,
 			(uint8_t*)buf);
 #endif
-		entry->r_offset += (off_t)rsize;
+		//entry->r_offset += (off_t)rsize;
 	}
 	return rsize;
 
@@ -634,9 +777,10 @@ long int NoHostFs::Pread(int fd, char* buf, size_t size, uint64_t absolute_offse
 	finfo = entry->node->file_info->at(start_page);
 
 	if(page_size - offset < viable_size){
-		rsize = pread(flash_fd, buf, (uint64_t)(page_size - offset), (off_t)(finfo->start_address + offset));
+		rsize = BufferRead(entry, finfo, buf, page_size - offset, (finfo->start_address + offset), 4096, true);
+		//rsize = pread(flash_fd, buf, (uint64_t)(page_size - offset), (off_t)(finfo->start_address + offset));
 	//printf("NoHostFs::Pread:: read(%d, %s, %zu), start_offset=%zu\n", flash_fd, buf, viable_size, (finfo->start_address + offset));
-		if(rsize < 0) return rsize;
+		//if(rsize < 0) return rsize;
 #ifdef ENABLE_LIBFTL
 		libftl_read (
 			finfo->start_address + offset, 
@@ -645,9 +789,10 @@ long int NoHostFs::Pread(int fd, char* buf, size_t size, uint64_t absolute_offse
 #endif
 	}
 	else{
-		rsize = pread(flash_fd, buf, viable_size, offset == 0 ? finfo->start_address : (finfo->start_address + offset));
+		rsize = BufferRead(entry, finfo, buf, viable_size, (finfo->start_address + offset), 4096, true);
+		//rsize = pread(flash_fd, buf, viable_size, offset == 0 ? finfo->start_address : (finfo->start_address + offset));
 	//printf("NoHostFs::Pread:: read(%d, %s, %zu), start_offset=%zu\n", flash_fd, buf, viable_size, (finfo->start_address + offset));
-		if(rsize < 0) return rsize;
+		//if(rsize < 0) return rsize;
 #ifdef ENABLE_LIBFTL
 		libftl_read (
 			finfo->start_address + offset, 

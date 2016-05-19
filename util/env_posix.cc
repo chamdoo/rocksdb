@@ -170,7 +170,7 @@ class PosixEnv : public Env {
   virtual Status NewSequentialFile(const std::string& fname,
                                    unique_ptr<SequentialFile>* result,
                                    const EnvOptions& options) override {
-		//printf("Enter the NewSequentialFile(string %s)\n", fname.c_str());
+		printf("Enter the NewSequentialFile(string %s)\n", fname.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
 	result->reset();
 	  if(!IsSstExtention(fname)){
@@ -195,11 +195,11 @@ class PosixEnv : public Env {
 		  mutex_nohost.Unlock();
 	   if (fd < -1) {
 		   *result = nullptr;
-			////printf("Exit:Fail the NewSequentialFile(string %s)\n", fname.c_str());
+			//printf("Exit:Fail the NewSequentialFile(string %s)\n", fname.c_str());
 		   return IOError(fname, errno);
 		 } else {
 		   result->reset(new NoHostSequentialFile(fname, fd, options, nohost)); //NOHOST
-			////printf("Exit:Success the NewSequentialFile(string %s)\n", fname.c_str());
+			//printf("Exit:Success the NewSequentialFile(string %s)\n", fname.c_str());
 		   return Status::OK();
 		 }
 	  }
@@ -208,7 +208,7 @@ class PosixEnv : public Env {
   virtual Status NewRandomAccessFile(const std::string& fname,
                                      unique_ptr<RandomAccessFile>* result,
                                      const EnvOptions& options) override {
-		//printf("Enter the NewRandomAccessFile(string %s)\n", fname.c_str());
+		printf("Enter the NewRandomAccessFile(string %s)\n", fname.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
 	  result->reset();
 	  if(!IsSstExtention(fname)){
@@ -260,7 +260,7 @@ class PosixEnv : public Env {
   virtual Status NewWritableFile(const std::string& fname,
                                  unique_ptr<WritableFile>* result,
                                  const EnvOptions& options) override {
-		//printf("Enter the NewWritableFile(string %s)\n", fname.c_str());
+		printf("Enter the NewWritableFile(string %s)\n", fname.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
 	  result->reset();
 	  if(!IsSstExtention(fname)){
@@ -308,12 +308,12 @@ class PosixEnv : public Env {
 		  mutex_nohost.Unlock();
 		} while (fd < 0 && errno == EINTR);
 		if (fd < 0) {
-			////printf("Exit:Fail the NewWritableFile(string %s)\n", fname.c_str());
+			//printf("Exit:Fail the NewWritableFile(string %s)\n", fname.c_str());
 			s = IOError(fname, errno);
 		}else{
 			EnvOptions no_mmap_writes_options = options;
 			no_mmap_writes_options.use_mmap_writes = false;
-			////printf("Exit:Success the NewWritableFile(string %s)\n", fname.c_str());
+			//printf("Exit:Success the NewWritableFile(string %s)\n", fname.c_str());
 			result->reset(new NoHostWritableFile(fname, fd, no_mmap_writes_options, nohost, pfd)); // NOHOST
 		}
 		return s;
@@ -324,7 +324,7 @@ class PosixEnv : public Env {
                                    const std::string& old_fname,
                                    unique_ptr<WritableFile>* result,
                                    const EnvOptions& options) override {
-		//printf("Enter the ReuseWritableFile(string %s)\n", fname.c_str());
+		printf("Enter the ReuseWritableFile(string %s)\n", fname.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
 	result->reset();
 	if(!IsSstExtention(fname)){
@@ -385,7 +385,7 @@ class PosixEnv : public Env {
 				  mutex_nohost.Unlock();
 	            Status r = IOError(old_fname, errno);
 	            nohost->Close(fd);
-	    		////printf("Exit:Fail the ReuseWritableFile(string %s)\n", fname.c_str());
+	    		//printf("Exit:Fail the ReuseWritableFile(string %s)\n", fname.c_str());
 	            return r;
 	          }
 			  mutex_nohost.Unlock();
@@ -400,7 +400,7 @@ class PosixEnv : public Env {
 
   virtual Status NewDirectory(const std::string& name,
                               unique_ptr<Directory>* result) override {
-		//printf("Enter the NewDirectory(string %s)\n", name.c_str());
+		printf("Enter the NewDirectory(string %s)\n", name.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     result->reset();
     int fd;
@@ -418,7 +418,7 @@ class PosixEnv : public Env {
   }
 
   virtual Status FileExists(const std::string& fname) override {
-  	//printf("Enter: the FileExists(string %s)\n", fname.c_str());
+  	printf("Enter: the FileExists(string %s)\n", fname.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     int result = access(fname.c_str(), F_OK);
 
@@ -442,7 +442,7 @@ class PosixEnv : public Env {
 
   virtual Status GetChildren(const std::string& dir,
                              std::vector<std::string>* result) override {
-		//printf("Enter the GetChildren(string %s)\n", dir.c_str());
+		printf("Enter the GetChildren(string %s)\n", dir.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     result->clear();
     DIR* d = opendir(dir.c_str());
@@ -458,7 +458,7 @@ class PosixEnv : public Env {
   }
 
   virtual Status DeleteFile(const std::string& fname) override {
-		//printf("Enter the DeleteFile(string %s)\n", fname.c_str());
+		printf("Enter the DeleteFile(string %s)\n", fname.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     Status result;
     if (unlink(fname.c_str()) != 0) {
@@ -473,7 +473,7 @@ class PosixEnv : public Env {
   };
 
   virtual Status CreateDir(const std::string& name) override {
-		//printf("Enter the CreateDir(string %s)\n", name.c_str());
+		printf("Enter the CreateDir(string %s)\n", name.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     Status result;
     if (mkdir(name.c_str(), 0755) != 0) {
@@ -483,7 +483,7 @@ class PosixEnv : public Env {
   };
 
   virtual Status CreateDirIfMissing(const std::string& name) override {
-		//printf("Enter the CreateDirIfMissing(string %s)\n", name.c_str());
+		printf("Enter the CreateDirIfMissing(string %s)\n", name.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     Status result;
     if (mkdir(name.c_str(), 0755) != 0) {
@@ -499,7 +499,7 @@ class PosixEnv : public Env {
   };
 
   virtual Status DeleteDir(const std::string& name) override {
-		//printf("Enter the DeleteDir(string %s)\n", name.c_str());
+		printf("Enter the DeleteDir(string %s)\n", name.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     Status result;
     if (rmdir(name.c_str()) != 0) {
@@ -531,7 +531,7 @@ class PosixEnv : public Env {
 
   virtual Status GetFileModificationTime(const std::string& fname,
                                          uint64_t* file_mtime) override {
-		//printf("Enter the GetFileModificationTime(string %s)\n", fname.c_str());
+		printf("Enter the GetFileModificationTime(string %s)\n", fname.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
 	if(IsSstExtention(fname)){
 		*file_mtime = nohost->GetFileModificationTime(fname);
@@ -546,7 +546,7 @@ class PosixEnv : public Env {
   }
   virtual Status RenameFile(const std::string& src,
                             const std::string& target) override {
-		//printf("Enter the RenameFile(string %s, string %s)\n", src.c_str(), target.c_str());
+		printf("Enter the RenameFile(string %s, string %s)\n", src.c_str(), target.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
 
 	Status result;
@@ -570,7 +570,7 @@ class PosixEnv : public Env {
 
   virtual Status LinkFile(const std::string& src,
                           const std::string& target) override {
-		//printf("Enter the LinkFile(%s, %s)\n", src.c_str(), target.c_str());
+		printf("Enter the LinkFile(%s, %s)\n", src.c_str(), target.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
 
 		if(IsSstExtention(src)){
@@ -589,7 +589,7 @@ class PosixEnv : public Env {
   }
 
   virtual Status LockFile(const std::string& fname, FileLock** lock) override {
-		//printf("Enter the LockFile( %s )\n", fname.c_str());
+		printf("Enter the LockFile( %s )\n", fname.c_str());
 		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     *lock = nullptr;
     Status result;
@@ -615,7 +615,7 @@ class PosixEnv : public Env {
 
   virtual Status UnlockFile(FileLock* lock) override {
     PosixFileLock* my_lock = reinterpret_cast<PosixFileLock*>(lock);
-	//printf("Enter: the UnlockFile( %s )\n", my_lock->filename.c_str());
+	printf("Enter: the UnlockFile( %s )\n", my_lock->filename.c_str());
 	//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
     Status result;
     if (LockOrUnlock(my_lock->filename, my_lock->fd_, false) == -1) {

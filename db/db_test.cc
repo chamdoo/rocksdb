@@ -73,9 +73,9 @@
 
 namespace rocksdb {
 
-static long TestGetTickerCount(const Options& options, Tickers ticker_type) {
+/*static long TestGetTickerCount(const Options& options, Tickers ticker_type) {
   return options.statistics->getTickerCount(ticker_type);
-}
+}*/
 
 #ifndef ROCKSDB_LITE
 // A helper function that ensures the table properties returned in
@@ -113,7 +113,7 @@ class DBTestWithParam : public DBTest,
 
   uint32_t max_subcompactions_;
 };
-
+/*
 #ifndef ROCKSDB_LITE
 TEST_F(DBTest, Empty) {
   do {
@@ -396,7 +396,7 @@ TEST_F(DBTest, IndexAndFilterBlocksOfNewTableAddedToCache) {
   // index/filter blocks added to block cache right after table creation.
   ASSERT_EQ(1, TestGetTickerCount(options, BLOCK_CACHE_INDEX_MISS));
   ASSERT_EQ(1, TestGetTickerCount(options, BLOCK_CACHE_FILTER_MISS));
-  ASSERT_EQ(2, /* only index/filter were added */
+  ASSERT_EQ(2,  only index/filter were added
             TestGetTickerCount(options, BLOCK_CACHE_ADD));
   ASSERT_EQ(0, TestGetTickerCount(options, BLOCK_CACHE_DATA_MISS));
   uint64_t int_num;
@@ -446,7 +446,7 @@ TEST_F(DBTest, ParanoidFileChecks) {
   ASSERT_OK(Put(1, "9_key", "val"));
   // Create a new table.
   ASSERT_OK(Flush(1));
-  ASSERT_EQ(1, /* read and cache data block */
+  ASSERT_EQ(1,  read and cache data block
             TestGetTickerCount(options, BLOCK_CACHE_ADD));
 
   ASSERT_OK(Put(1, "1_key2", "val2"));
@@ -455,7 +455,7 @@ TEST_F(DBTest, ParanoidFileChecks) {
   // and generate another file.
   ASSERT_OK(Flush(1));
   dbfull()->TEST_WaitForCompact();
-  ASSERT_EQ(3, /* Totally 3 files created up to now */
+  ASSERT_EQ(3,  Totally 3 files created up to now
             TestGetTickerCount(options, BLOCK_CACHE_ADD));
 
   // After disabling options.paranoid_file_checks. NO further block
@@ -470,7 +470,7 @@ TEST_F(DBTest, ParanoidFileChecks) {
   ASSERT_OK(Put(1, "9_key4", "val4"));
   ASSERT_OK(Flush(1));
   dbfull()->TEST_WaitForCompact();
-  ASSERT_EQ(3, /* Totally 3 files created up to now */
+  ASSERT_EQ(3,  Totally 3 files created up to now
             TestGetTickerCount(options, BLOCK_CACHE_ADD));
 }
 
@@ -559,7 +559,7 @@ void GetExpectedTableProperties(TableProperties* expected_tp,
 }
 }  // namespace
 
-/*TEST_F(DBTest, AggregatedTableProperties) {
+TEST_F(DBTest, AggregatedTableProperties) {
   for (int kTableCount = 40; kTableCount <= 100; kTableCount += 30) {
     const int kKeysPerTable = 100;
     const int kKeySize = 80;
@@ -600,7 +600,7 @@ void GetExpectedTableProperties(TableProperties* expected_tp,
 
     VerifyTableProperties(expected_tp, output_tp);
   }
-}*/
+}
 
 TEST_F(DBTest, ReadLatencyHistogramByLevel) {
   Options options = CurrentOptions();
@@ -1251,7 +1251,7 @@ TEST_F(DBTest, KeyMayExist) {
 
     ASSERT_OK(Flush(1));
     dbfull()->TEST_CompactRange(0, nullptr, nullptr, handles_[1],
-                                true /* disallow trivial move */);
+                                true  disallow trivial move );
 
     numopen = TestGetTickerCount(options, NO_FILE_OPENS);
     cache_added = TestGetTickerCount(options, BLOCK_CACHE_ADD);
@@ -2127,7 +2127,7 @@ TEST_F(DBTest, IterWithSnapshot) {
   } while (ChangeOptions(kSkipHashCuckoo));
 }
 
-/*TEST_F(DBTest, Recover) {
+TEST_F(DBTest, Recover) {
   do {
     CreateAndReopenWithCF({"pikachu"}, CurrentOptions());
     ASSERT_OK(Put(1, "foo", "v1"));
@@ -2148,7 +2148,7 @@ TEST_F(DBTest, IterWithSnapshot) {
     ASSERT_EQ("v2", Get(1, "bar"));
     ASSERT_EQ("v5", Get(1, "baz"));
   } while (ChangeOptions());
-}*/
+}
 
 TEST_F(DBTest, RecoverWithTableHandle) {
   do {
@@ -2188,7 +2188,7 @@ TEST_F(DBTest, RecoverWithTableHandle) {
   } while (ChangeOptions());
 }
 
-/*TEST_F(DBTest, IgnoreRecoveredLog) {
+TEST_F(DBTest, IgnoreRecoveredLog) {
   std::string backup_logs = dbname_ + "/backup_logs";
 
   // delete old files in backup_logs directory
@@ -2275,7 +2275,7 @@ TEST_F(DBTest, RecoverWithTableHandle) {
     Status s = TryReopen(options);
     ASSERT_TRUE(!s.ok());
   } while (ChangeOptions(kSkipHashCuckoo));
-}*/
+}
 
 TEST_F(DBTest, CheckLock) {
   do {
@@ -2619,7 +2619,7 @@ TEST_F(DBTest, GetProperty) {
   }
 }
 
-/*TEST_F(DBTest, ApproximateMemoryUsage) {
+TEST_F(DBTest, ApproximateMemoryUsage) {
   const int kNumRounds = 10;
   // TODO(noetzli) kFlushesPerRound does not really correlate with how many
   // flushes happen.
@@ -2716,7 +2716,7 @@ TEST_F(DBTest, GetProperty) {
   dbfull()->GetIntProperty("rocksdb.size-all-mem-tables", &all_mem);
   ASSERT_EQ(active_mem, unflushed_mem);
   ASSERT_EQ(unflushed_mem, all_mem);
-}*/
+}
 
 TEST_F(DBTest, EstimatePendingCompBytes) {
   // Set sizes to both background thread pool to be 1 and block them.
@@ -2816,7 +2816,7 @@ TEST_F(DBTest, FLUSH) {
   } while (ChangeCompactOptions());
 }
 
-/*TEST_F(DBTest, RecoveryWithEmptyLog) {
+TEST_F(DBTest, RecoveryWithEmptyLog) {
   do {
     CreateAndReopenWithCF({"pikachu"}, CurrentOptions());
     ASSERT_OK(Put(1, "foo", "v1"));
@@ -2827,7 +2827,7 @@ TEST_F(DBTest, FLUSH) {
     ReopenWithColumnFamilies({"default", "pikachu"}, CurrentOptions());
     ASSERT_EQ("v3", Get(1, "foo"));
   } while (ChangeOptions());
-}*/
+}
 
 #ifndef ROCKSDB_LITE
 TEST_F(DBTest, FlushSchedule) {
@@ -4137,7 +4137,7 @@ TEST_F(DBTest, DropWrites) {
             break;
           }
           dbfull()->TEST_CompactRange(level, nullptr, nullptr, nullptr,
-                                      true /* disallow trivial move */);
+                                      true  disallow trivial move );
         }
       } else {
         dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr);
@@ -4204,7 +4204,7 @@ TEST_F(DBTest, NoSpaceCompactRange) {
     env_->no_space_.store(true, std::memory_order_release);
 
     Status s = dbfull()->TEST_CompactRange(0, nullptr, nullptr, nullptr,
-                                           true /* disallow trivial move */);
+                                           true  disallow trivial move );
     ASSERT_TRUE(s.IsIOError());
 
     env_->no_space_.store(false, std::memory_order_release);
@@ -5216,15 +5216,15 @@ TEST_F(DBTest, kTolerateCorruptedTailRecords) {
   const int jstart = RecoveryTestHelper::kWALFileOffset;
   const int jend = jstart + RecoveryTestHelper::kWALFilesCount;
 
-  for (auto trunc : {true, false}) {        /* Corruption style */
-    for (int i = 0; i < 4; i++) {           /* Corruption offset position */
-      for (int j = jstart; j < jend; j++) { /* WAL file */
+  for (auto trunc : {true, false}) {         Corruption style
+    for (int i = 0; i < 4; i++) {            Corruption offset position
+      for (int j = jstart; j < jend; j++) {  WAL file
         // Fill data for testing
         Options options = CurrentOptions();
         const size_t row_count = RecoveryTestHelper::FillData(this, options);
         // test checksum failure or parsing
-        RecoveryTestHelper::CorruptWAL(this, options, /*off=*/i * .3,
-                                       /*len%=*/.1, /*wal=*/j, trunc);
+        RecoveryTestHelper::CorruptWAL(this, options, off=i * .3,
+                                       len%=.1, wal=j, trunc);
 
         if (trunc) {
           options.wal_recovery_mode =
@@ -5259,18 +5259,18 @@ TEST_F(DBTest, kAbsoluteConsistency) {
   ASSERT_OK(TryReopen(options));
   ASSERT_EQ(RecoveryTestHelper::GetData(this), row_count);
 
-  for (auto trunc : {true, false}) { /* Corruption style */
-    for (int i = 0; i < 4; i++) {    /* Corruption offset position */
+  for (auto trunc : {true, false}) {  Corruption style
+    for (int i = 0; i < 4; i++) {     Corruption offset position
       if (trunc && i == 0) {
         continue;
       }
 
-      for (int j = jstart; j < jend; j++) { /* wal files */
+      for (int j = jstart; j < jend; j++) {  wal files
         // fill with new date
         RecoveryTestHelper::FillData(this, options);
         // corrupt the wal
-        RecoveryTestHelper::CorruptWAL(this, options, /*off=*/i * .3,
-                                       /*len%=*/.1, j, trunc);
+        RecoveryTestHelper::CorruptWAL(this, options, off=i * .3,
+                                       len%=.1, j, trunc);
         // verify
         options.wal_recovery_mode = WALRecoveryMode::kAbsoluteConsistency;
         options.create_if_missing = false;
@@ -5289,16 +5289,16 @@ TEST_F(DBTest, kPointInTimeRecovery) {
   const int maxkeys =
       RecoveryTestHelper::kWALFilesCount * RecoveryTestHelper::kKeysPerWALFile;
 
-  for (auto trunc : {true, false}) {        /* Corruption style */
-    for (int i = 0; i < 4; i++) {           /* Offset of corruption */
-      for (int j = jstart; j < jend; j++) { /* WAL file */
+  for (auto trunc : {true, false}) {         Corruption style
+    for (int i = 0; i < 4; i++) {            Offset of corruption
+      for (int j = jstart; j < jend; j++) {  WAL file
         // Fill data for testing
         Options options = CurrentOptions();
         const size_t row_count = RecoveryTestHelper::FillData(this, options);
 
         // Corrupt the wal
-        RecoveryTestHelper::CorruptWAL(this, options, /*off=*/i * .3,
-                                       /*len%=*/.1, j, trunc);
+        RecoveryTestHelper::CorruptWAL(this, options, off=i * .3,
+                                       len%=.1, j, trunc);
 
         // Verify
         options.wal_recovery_mode = WALRecoveryMode::kPointInTimeRecovery;
@@ -5338,16 +5338,16 @@ TEST_F(DBTest, kSkipAnyCorruptedRecords) {
   const int jstart = RecoveryTestHelper::kWALFileOffset;
   const int jend = jstart + RecoveryTestHelper::kWALFilesCount;
 
-  for (auto trunc : {true, false}) {        /* Corruption style */
-    for (int i = 0; i < 4; i++) {           /* Corruption offset */
-      for (int j = jstart; j < jend; j++) { /* wal files */
+  for (auto trunc : {true, false}) {         Corruption style
+    for (int i = 0; i < 4; i++) {            Corruption offset
+      for (int j = jstart; j < jend; j++) {  wal files
         // Fill data for testing
         Options options = CurrentOptions();
         const size_t row_count = RecoveryTestHelper::FillData(this, options);
 
         // Corrupt the WAL
-        RecoveryTestHelper::CorruptWAL(this, options, /*off=*/i * .3,
-                                       /*len%=*/.1, j, trunc);
+        RecoveryTestHelper::CorruptWAL(this, options, off=i * .3,
+                                       len%=.1, j, trunc);
 
         // Verify behavior
         options.wal_recovery_mode = WALRecoveryMode::kSkipAnyCorruptedRecords;
@@ -6363,10 +6363,10 @@ TEST_F(DBTest, SimpleWriteTimeoutTest) {
 }
 
 #ifndef ROCKSDB_LITE
-/*
+
  * This test is not reliable enough as it heavily depends on disk behavior.
- */
-/*TEST_F(DBTest, RateLimitingTest) {
+
+TEST_F(DBTest, RateLimitingTest) {
   Options options = CurrentOptions();
   options.write_buffer_size = 1 << 20;         // 1MB
   options.level0_file_num_compaction_trigger = 2;
@@ -6431,7 +6431,7 @@ TEST_F(DBTest, SimpleWriteTimeoutTest) {
   ratio = env_->bytes_written_ * 1000000 / elapsed / raw_rate;
   fprintf(stderr, "write rate ratio = %.2lf, expected 0.5\n", ratio);
   ASSERT_LT(ratio, 0.6);
-}*/
+}
 
 TEST_F(DBTest, TableOptionsSanitizeTest) {
   Options options = CurrentOptions();
@@ -7860,7 +7860,7 @@ TEST_F(DBTest, DontDeletePendingOutputs) {
   std::function<void()> purge_obsolete_files_function = [&]() {
     JobContext job_context(0);
     dbfull()->TEST_LockMutex();
-    dbfull()->FindObsoleteFiles(&job_context, true /*force*/);
+    dbfull()->FindObsoleteFiles(&job_context, true force);
     dbfull()->TEST_UnlockMutex();
     dbfull()->PurgeObsoleteFiles(job_context);
     job_context.Clean();
@@ -8024,7 +8024,7 @@ TEST_F(DBTest, L0L1L2AndUpHitCounter) {
                          TestGetTickerCount(options, GET_HIT_L2_AND_UP));
 }
 
-/*TEST_F(DBTest, EncodeDecompressedBlockSizeTest) {
+TEST_F(DBTest, EncodeDecompressedBlockSizeTest) {
   // iter 0 -- zlib
   // iter 1 -- bzip2
   // iter 2 -- lz4
@@ -8067,7 +8067,7 @@ TEST_F(DBTest, L0L1L2AndUpHitCounter) {
       }
     }
   }
-}*/
+}
 
 TEST_F(DBTest, MutexWaitStats) {
   Options options = CurrentOptions();
@@ -8163,7 +8163,7 @@ TEST_F(DBTest, DeleteObsoleteFilesPendingOutputs) {
   listener->SetExpectedFileName(dbname_ + file_on_L2);
 
   ASSERT_OK(dbfull()->TEST_CompactRange(3, nullptr, nullptr, nullptr,
-                                        true /* disallow trivial move */));
+                                        true  disallow trivial move ));
   ASSERT_EQ("0,0,0,0,1", FilesPerLevel(0));
 
   // finish the flush!
@@ -8776,7 +8776,7 @@ TEST_F(DBTest, LargeBatchWithColumnFamilies) {
 }
 
 // Make sure that Flushes can proceed in parallel with CompactRange()
-/*TEST_F(DBTest, FlushesInParallelWithCompactRange) {
+TEST_F(DBTest, FlushesInParallelWithCompactRange) {
   // iter == 0 -- leveled
   // iter == 1 -- leveled, but throw in a flush between two levels compacting
   // iter == 2 -- universal
@@ -8836,7 +8836,7 @@ TEST_F(DBTest, LargeBatchWithColumnFamilies) {
     }
     rocksdb::SyncPoint::GetInstance()->DisableProcessing();
   }
-}*/
+}
 
 TEST_F(DBTest, DelayedWriteRate) {
   Options options;
@@ -8882,7 +8882,7 @@ TEST_F(DBTest, DelayedWriteRate) {
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
 }
 
-/*TEST_F(DBTest, HardLimit) {
+TEST_F(DBTest, HardLimit) {
   Options options;
   options.env = env_;
   env_->SetBackgroundThreads(1, Env::LOW);
@@ -8927,7 +8927,7 @@ TEST_F(DBTest, DelayedWriteRate) {
   ASSERT_GE(callback_count.load(), 1);
 
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
-}*/
+}
 
 #ifndef ROCKSDB_LITE
 TEST_F(DBTest, SoftLimit) {
@@ -9330,7 +9330,7 @@ TEST_F(DBTest, UnsupportedManualSync) {
 }
 
 #ifndef ROCKSDB_LITE
-/*TEST_F(DBTest, OpenDBWithInfiniteMaxOpenFiles) {
+TEST_F(DBTest, OpenDBWithInfiniteMaxOpenFiles) {
   // Open DB with infinite max open files
   //  - First iteration use 1 thread to open files
   //  - Second iteration use 5 threads to open files
@@ -9384,7 +9384,7 @@ TEST_F(DBTest, UnsupportedManualSync) {
       ASSERT_EQ(Get("L2_" + Key(i)), "L2_" + Key(i) + std::string(1000, 'a'));
     }
   }
-}*/
+}
 
 TEST_F(DBTest, GetTotalSstFilesSize) {
   Options options = CurrentOptions();
@@ -9733,9 +9733,9 @@ TEST_F(DBTest, AddExternalSstFile) {
     }
   } while (ChangeOptions(kSkipPlainTable | kSkipUniversalCompaction |
                          kSkipFIFOCompaction));
-}
+}*/
 
-TEST_F(DBTest, AddExternalSstFileNoCopy) {
+/*TEST_F(DBTest, AddExternalSstFileNoCopy) {
   std::string sst_files_folder = test::TmpDir(env_) + "/sst_files/";
   env_->CreateDir(sst_files_folder);
   Options options = CurrentOptions();
@@ -9786,25 +9786,25 @@ TEST_F(DBTest, AddExternalSstFileNoCopy) {
   ASSERT_EQ(file3_info.smallest_key, Key(110));
   ASSERT_EQ(file3_info.largest_key, Key(124));
 
-  s = db_->AddFile(&file1_info, true /* move file */);
+  s = db_->AddFile(&file1_info, true  move file );
   ASSERT_TRUE(s.ok()) << s.ToString();
   ASSERT_EQ(Status::NotFound(), env_->FileExists(file1));
 
-  s = db_->AddFile(&file2_info, false /* copy file */);
+  s = db_->AddFile(&file2_info, false  copy file );
   ASSERT_TRUE(s.ok()) << s.ToString();
   ASSERT_OK(env_->FileExists(file2));
 
   // This file have overlapping values with the exisitng data
-  s = db_->AddFile(&file3_info, true /* move file */);
+  s = db_->AddFile(&file3_info, true  move file );
   ASSERT_FALSE(s.ok()) << s.ToString();
   ASSERT_OK(env_->FileExists(file3));
 
   for (int k = 0; k < 300; k++) {
     ASSERT_EQ(Get(Key(k)), Key(k) + "_val");
   }
-}
+}*/
 
-/*TEST_F(DBTest, AddExternalSstFileMultiThreaded) {
+TEST_F(DBTest, AddExternalSstFileMultiThreaded) {
   std::string sst_files_folder = test::TmpDir(env_) + "/sst_files/";
   // Bulk load 10 files every file contain 1000 keys
   int num_files = 10;
@@ -9902,7 +9902,7 @@ TEST_F(DBTest, AddExternalSstFileNoCopy) {
     fprintf(stderr, "Verified %d values\n", num_files * keys_per_file);
   } while (ChangeOptions(kSkipPlainTable | kSkipUniversalCompaction |
                          kSkipFIFOCompaction));
-}*/
+}
 
 TEST_F(DBTest, AddExternalSstFileOverlappingRanges) {
   std::string sst_files_folder = test::TmpDir(env_) + "/sst_files/";
@@ -10004,7 +10004,7 @@ TEST_F(DBTest, AddExternalSstFileOverlappingRanges) {
                          kSkipFIFOCompaction));
 }
 
-#endif  // ROCKSDB_LITE
+/*#endif  // ROCKSDB_LITE*/
 
 // 1 Create some SST files by inserting K-V pairs into DB
 // 2 Close DB and change suffix from ".sst" to ".ldb" for every other SST file
