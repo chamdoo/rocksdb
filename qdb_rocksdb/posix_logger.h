@@ -13,13 +13,14 @@
 #pragma once
 #include <algorithm>
 #include <stdio.h>
+#include <sys/time.h>
 #include <time.h>
 #include <fcntl.h>
+#include <unistd.h>
 #ifdef OS_LINUX
 #include <linux/falloc.h>
 #endif
 #include "rocksdb/env.h"
-#include "util/iostats_context_imp.h"
 #include <atomic>
 
 namespace rocksdb {
@@ -36,36 +37,28 @@ class PosixLogger : public Logger {
   std::atomic_uint_fast64_t last_flush_micros_;
   Env* env_;
   bool flush_pending_;
-  int nfd_;
-  NoHostFs* nohost_; // NOHOST
  public:
-  PosixLogger(FILE* f, uint64_t (*gettid)(), int nfd, NoHostFs* nohost, Env* env,
-              const InfoLogLevel log_level = InfoLogLevel::ERROR_LEVEL) // NOHOST
+  PosixLogger(FILE* f, uint64_t (*gettid)(), Env* env,
+              const InfoLogLevel log_level = InfoLogLevel::ERROR_LEVEL)
       : Logger(log_level),
         file_(f),
         gettid_(gettid),
         log_size_(0),
-        fd_(0),
+        fd_(fileno(f)),
         last_flush_micros_(0),
         env_(env),
-        flush_pending_(false),
-		nfd_(nfd), // NOHOST
-		nohost_(nohost) {} // NOHOST
+        flush_pending_(false) {}
   virtual ~PosixLogger() {
-   // fclose(file_);
-    nohost_->Close(nfd_); // NOHOST
+    fclose(file_);
   }
-  virtual void Flush() override {
+  virtual void Flush() {
     if (flush_pending_) {
       flush_pending_ = false;
-    //  fflush(file_);
+      fflush(file_);
     }
     last_flush_micros_ = env_->NowMicros();
   }
-
-  using Logger::Logv;
-  virtual void Logv(const char* format, va_list ap) override {
-
+  virtual void Logv(const char* format, va_list ap) {
     const uint64_t thread_id = (*gettid_)();
 
     // We try twice: the first time with a fixed-size stack allocated buffer,
@@ -124,7 +117,6 @@ class PosixLogger : public Logger {
 
       assert(p <= limit);
       const size_t write_size = p - base;
-/*
 
 #ifdef ROCKSDB_FALLOCATE_PRESENT
       // If this write would cross a boundary of kDebugLogChunkSize
@@ -142,22 +134,7 @@ class PosixLogger : public Logger {
             static_cast<off_t>(desired_allocation_chunk * kDebugLogChunkSize));
       }
 #endif
-*/
 
-
-      // NOHOST
-      const char* src = base;
-      size_t left = write_size;
-      size_t sum = 0;
-      while (left != 0) {
-        ssize_t done = nohost_->Write(nfd_, src, left);
-        if (done < 0) break;
-        left -= done;
-        src += done;
-        sum += done;
-      }
-      // NOHOST
-/*
       size_t sz = fwrite(base, 1, write_size, file_);
       flush_pending_ = true;
       assert(sz == write_size);
@@ -167,15 +144,19 @@ class PosixLogger : public Logger {
       uint64_t now_micros = static_cast<uint64_t>(now_tv.tv_sec) * 1000000 +
         now_tv.tv_usec;
       if (now_micros - last_flush_micros_ >= flush_every_seconds_ * 1000000) {
-        Flush();
-      }*/
+        flush_pending_ = false;
+        fflush(file_);
+        last_flush_micros_ = now_micros;
+      }
       if (base != buffer) {
         delete[] base;
       }
       break;
     }
   }
-  size_t GetLogFileSize() const override { return log_size_; }
+  size_t GetLogFileSize() const {
+    return log_size_;
+  }
 };
 
 }  // namespace rocksdb

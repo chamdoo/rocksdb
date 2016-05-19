@@ -24,7 +24,6 @@
 #include <vector>
 #include <stdint.h>
 #include "rocksdb/status.h"
-#include "nohost/nohost_fs.h"
 
 namespace rocksdb {
 

@@ -32,39 +32,41 @@ class NoHostFs{
 private:
 	std::vector<OpenFileEntry*>* open_file_table;
 	int flash_fd;
-	size_t page_size;
+	uint64_t page_size;
+    int nopen, nclose, nread, nwrite, ndelete, ncreate;
+    uint64_t tdrs;
+    uint64_t tdws;
 
 public:
 	GlobalFileTableTree* global_file_tree; // it must be private!!!!
 
-	NoHostFs(size_t assign_size){
+	NoHostFs(uint64_t assign_size){
 		global_file_tree = new GlobalFileTableTree(assign_size);
 		open_file_table = new std::vector<OpenFileEntry*>();
 		flash_fd = open("flash.db", O_CREAT | O_RDWR | O_TRUNC, 0666);
 		this->page_size = assign_size;
-        int fd = Open("/proc/sys/kernel/random/uuid", 'w');
-        Write(fd, "8691b88d-c84f-4bed-9d7b-7f3e08fe60f2", sizeof("8691b88d-c84f-4bed-9d7b-7f3e08fe60f2"));
-        Close(fd);
+        nopen = nclose = nread = nwrite = ndelete = ncreate = 0;
+        tdrs = 0;
+        tdws = 0;
 	}
 	~NoHostFs(){
 		delete global_file_tree;
-		for(size_t i =0; i < open_file_table->size(); i++){
+		for(uint64_t i =0; i < open_file_table->size(); i++){
 			if(open_file_table->at(i) != NULL)
 				delete open_file_table->at(i);
 		}
 		close(flash_fd);
-		//unlink("flash.db");
+//	unlink("flash.db");
 	}
-	size_t GetFreeBlockAddress();
+	uint64_t GetFreeBlockAddress();
 	int Open(std::string name, char type);
-	long int Write(int fd, const char* buf, size_t size);
-	long int Write(int fd, char* buf, size_t size);
-	long int Read(int fd, char* buf, size_t size);
-	long int ReadHelper(int fd, char* buf, size_t size);
-	size_t SequentialRead(int fd, char* buf, size_t size);
-	long int Pread(int fd, char* buf, uint64_t size, uint64_t absolute_offset);
-	long int Pwrite(int fd, const char* buf, uint64_t size, uint64_t absolute_offset);
-
+	ssize_t Write(int fd, const char* buf, uint64_t size);
+	ssize_t Write(int fd, char* buf, uint64_t size);
+	ssize_t Read(int fd, char* buf, uint64_t size);
+	ssize_t ReadHelper(int fd, char* buf, uint64_t size);
+	uint64_t SequentialRead(int fd, char* buf, uint64_t size);
+	ssize_t Pread(int fd, char* buf, uint64_t size, uint64_t absolute_offset);
+	ssize_t Pwrite(int fd, const char* buf, uint64_t size, uint64_t absolute_offset);
 
 	int Close(int fd);
 	int Rename(std::string old_name, std::string name);
@@ -75,15 +77,15 @@ public:
 	int CreateFile(std::string name);
 	int CreateDir(std::string name);
 	bool DirExists(std::string name);
-	int GetFileSize(std::string name);
-	long int GetFileModificationTime(std::string name);
+	uint64_t GetFileSize(std::string name);
+	ssize_t GetFileModificationTime(std::string name);
 	bool Link(std::string src, std::string target);
 	bool IsEof(int dfd);
 	off_t Lseek(int fd, off_t n);
 	int Free(Node* node);
 	int Lock(std::string name, bool lock);
 	std::string GetAbsolutePath();
-	int GetFD();
+    int  GetFd();
 
 };
 

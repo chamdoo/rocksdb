@@ -42,6 +42,7 @@
 #include "util/random.h"
 #include "util/iostats_context_imp.h"
 #include "util/rate_limiter.h"
+#include "nohost/nohost_fs.h" // NOHOST
 
 // Get nano time for mach systems
 #ifdef __MACH__
@@ -74,6 +75,19 @@
 int rocksdb_kill_odds = 0;
 
 namespace rocksdb {
+// NOHOST
+
+extern std::vector<std::string> split(const std::string &s, char delim);
+bool IsSstExtention(std::string name){
+	std::vector<std::string> list = split(name, '.');
+	std::string ex = list.back();
+	ex = ex.substr(0, 3);
+	//printf("DEBUG:: %s\n", ex.c_str());
+	return (ex.compare("sst") == 0 || ex.compare("ldb") == 0 || ex.compare("log") == 0);
+}
+// NOHOST
+
+
 
 namespace {
 
@@ -90,6 +104,7 @@ int Fadvise(int fd, off_t offset, size_t len, int advice) {
 // list of pathnames that are locked
 static std::set<std::string> lockedFiles;
 static port::Mutex mutex_lockedFiles;
+static port::Mutex mutex_nohost;
 
 static Status IOError(const std::string& context, int err_number) {
   return Status::IOError(context, strerror(err_number));
@@ -158,7 +173,8 @@ namespace {
 }
 #endif
 
-class PosixSequentialFile : public SequentialFile {
+// NOHOST
+class NoHostSequentialFile : public SequentialFile {
  private:
   std::string filename_;
 //  FILE* file_; // NOHOST
@@ -167,20 +183,19 @@ class PosixSequentialFile : public SequentialFile {
   NoHostFs* nohost_; // NOHOST
 
  public:
-  PosixSequentialFile(const std::string& fname, int fd,
-                                           const EnvOptions& options, NoHostFs* nohost) // NOHOST
-      : filename_(fname),
-        fd_(fd),
-        use_os_buffer_(options.use_os_buffer),
-  	  nohost_(nohost){} // NOHOST
-  virtual ~PosixSequentialFile() {nohost_->Close(fd_); } // NOHOST
+  NoHostSequentialFile(const std::string& fname, int fd,
+                      const EnvOptions& options, NoHostFs* nohost)
+ : filename_(fname), fd_(fd), use_os_buffer_(options.use_os_buffer), nohost_(nohost){}
+  virtual ~NoHostSequentialFile() {nohost_->Close(fd_); } // NOHOST
 
   virtual Status Read(size_t n, Slice* result, char* scratch) {
 
-	  // NOHOST
 	  Status s;
 	  size_t r = 0;
+
+	  mutex_nohost.Lock();
 	  r = nohost_->SequentialRead(fd_, scratch, n);
+	  mutex_nohost.Unlock();
 
 	  *result = Slice(scratch, r);
 	  if (r < n) {
@@ -191,24 +206,339 @@ class PosixSequentialFile : public SequentialFile {
 	    }
 	  }
 
-	  // NOHOST
-
 	  return s;
 	}
-
   virtual Status Skip(uint64_t n) {
 		Status result;
 
-	  // NOHOST
 	  int value = 0;
 	  if ((value = nohost_->Lseek(fd_, n)) < 0) {
 		  result = IOError(filename_, errno);
-		 // //printf("PosixSequentialFile::Skip:: result value is not same\n");
 	  }
-	  // NOHOST
 
 	  return result;
 	}
+  virtual Status InvalidateCache(size_t offset, size_t length) { return Status::OK(); }
+};
+
+class NoHostRandomAccessFile : public RandomAccessFile {
+ private:
+  std::string filename_;
+  int fd_;
+  bool use_os_buffer_;
+  NoHostFs* nohost_; // NOHOST
+
+ public:
+  NoHostRandomAccessFile(const std::string& fname, int fd,
+                        const EnvOptions& options, NoHostFs* nohost)
+ : filename_(fname), fd_(fd), use_os_buffer_(options.use_os_buffer), nohost_(nohost) {}
+  virtual ~NoHostRandomAccessFile() {nohost_->Close(fd_);} // NOHOST
+
+  virtual Status Read(uint64_t offset, size_t n, Slice* result,
+          char* scratch) const {
+
+	Status s;
+	ssize_t r = -1;
+	size_t left = n;
+	char* ptr = scratch;
+
+	if(scratch == NULL){
+		scratch = new char[n];
+		ptr = scratch;
+	}
+	while (left > 0) {
+		mutex_nohost.Lock();
+		r = nohost_->Pread(fd_, ptr, left, offset);
+	    mutex_nohost.Unlock();
+		if (r <= 0) {
+			if (errno == EINTR) {
+				continue;
+			}
+			break;
+		}
+		ptr += r;
+		offset += r;
+		left -= r;
+	}
+	*result = Slice(scratch, (r < 0) ? 0 : n - left);
+	if (r < 0) {
+		// An error: return a non-ok status
+		s = IOError(filename_, errno);
+	}
+	return s;
+}
+#ifdef OS_LINUX
+  virtual size_t GetUniqueId(char* id, size_t max_size) const {
+	  return GetUniqueIdFromFile(fd_, id, max_size);}
+#endif
+  virtual void Hint(AccessPattern pattern) {}
+  virtual Status InvalidateCache(size_t offset, size_t length) { return Status::OK(); }
+};
+
+class NoHostWritableFile : public WritableFile {
+ private:
+  const std::string filename_;
+  int fd_;
+  uint64_t filesize_;
+  NoHostFs* nohost_; // NOHOST
+  int pfd_; // NOHOST
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+  bool allow_fallocate_;
+  bool fallocate_with_keep_size_;
+#endif
+  RateLimiter* rate_limiter_;
+
+ public:
+  NoHostWritableFile(const std::string& fname, int fd,
+                    const EnvOptions& options, NoHostFs* nohost, int pfd)
+ : filename_(fname), fd_(fd), filesize_(0), nohost_(nohost), pfd_(pfd), rate_limiter_(options.rate_limiter) {
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+    fallocate_with_keep_size_ = options.fallocate_with_keep_size;
+#endif
+    assert(!options.use_mmap_writes);
+  }
+  ~NoHostWritableFile() { if (fd_ >= 0) NoHostWritableFile::Close();  }
+
+  // Means Close() will properly take care of truncate
+  // and it does not need any additional information
+  virtual Status Truncate(uint64_t size) { return Status::OK(); }
+  virtual Status Close() {
+	  Status s;
+	  Status ns; // NOHOST
+
+	  if (close(pfd_) < 0) {
+	    s = IOError(filename_, errno);
+	  }
+	  pfd_ = -1;
+
+	  // NOHOST
+	  if (nohost_->Close(fd_) < 0) {
+		ns = IOError(filename_, errno);
+	  }
+	  fd_ = -1;
+	  // NOHOST
+
+	  return ns;
+	}
+  virtual Status Append(const Slice& data) {
+	  const char* src = data.data();
+	  size_t left = data.size();
+	  size_t sum = 0;
+	  while (left != 0) {
+		mutex_nohost.Lock();
+	    ssize_t done = nohost_->Write(fd_, src, RequestToken(left));
+	    mutex_nohost.Unlock();
+	    if (done < 0) {
+	        if (errno == EINTR) {
+	          continue;
+	        }
+	      return IOError(filename_, errno);
+	    }
+	    left -= done;
+	    src += done;
+	    sum += done;
+	  }
+	  filesize_ += data.size();
+	  return Status::OK();
+	}
+  virtual Status Flush() {
+	  FILE* fp= fopen("write_trace.txt", "a");
+	  fprintf(fp, "FLUSH()\n");
+	  fclose(fp);
+	  return Status::OK();
+  }
+  virtual Status Sync() {
+	  FILE* fp= fopen("write_trace.txt", "a");
+	  fprintf(fp, "SYNC()\n");
+	  fclose(fp);
+	  return Status::OK();
+  }
+  virtual Status Fsync() {
+	  FILE* fp= fopen("write_trace.txt", "a");
+	  fprintf(fp, "FSYNC()\n");
+	  fclose(fp);
+	  return Status::OK();
+  }
+  virtual bool IsSyncThreadSafe() const { return true; }
+  virtual uint64_t GetFileSize() { return filesize_; }
+  virtual Status InvalidateCache(size_t offset, size_t length) { return Status::OK(); }
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+  virtual Status Allocate(off_t offset, off_t len) { return Status::OK(); }
+  virtual Status RangeSync(off_t offset, off_t nbytes) { return Status::OK(); }
+  virtual size_t GetUniqueId(char* id, size_t max_size) const {
+	  return GetUniqueIdFromFile(fd_, id, max_size);}
+
+ private:
+  inline size_t RequestToken(size_t bytes) {
+    if (rate_limiter_ && io_priority_ < Env::IO_TOTAL) {
+      bytes = std::min(bytes,
+          static_cast<size_t>(rate_limiter_->GetSingleBurstBytes()));
+      rate_limiter_->Request(bytes, io_priority_);
+    }
+    return bytes;
+  }
+
+#endif
+};
+
+
+class NoHostRandomRWFile : public RandomRWFile {
+ private:
+  const std::string filename_;
+  int fd_;
+  NoHostFs* nohost_; // NOHOST
+  int pfd_; // NOHOST
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+  bool fallocate_with_keep_size_;
+#endif
+
+ public:
+  NoHostRandomRWFile(const std::string& fname, int fd, const EnvOptions& options, NoHostFs* nohost, int pfd)
+      : filename_(fname),
+        fd_(fd),
+		nohost_(nohost),
+		pfd_(pfd){
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+    fallocate_with_keep_size_ = options.fallocate_with_keep_size;
+#endif
+  }
+  ~NoHostRandomRWFile() { if (fd_ >= 0) Close(); }
+
+  virtual Status Write(uint64_t offset, const Slice& data) {
+    const char* src = data.data();
+    size_t left = data.size();
+    Status s;
+
+    while (left != 0) {
+    	mutex_nohost.Lock();
+    	ssize_t done = nohost_->Pwrite(fd_, src, left, offset);
+		mutex_nohost.Unlock();
+		if (done < 0) {
+			if (errno == EINTR) {
+				continue;
+			}
+			return IOError(filename_, errno);
+		}
+		IOSTATS_ADD(bytes_written, done);
+		left -= done;
+		src += done;
+		offset += done;
+    }
+    return Status::OK();
+  }
+
+  virtual Status Read(uint64_t offset, size_t n, Slice* result,
+          char* scratch) const {
+		Status s;
+		ssize_t r = -1;
+		size_t left = n;
+		char* ptr = scratch;
+
+		if(scratch == NULL){
+			scratch = new char[n];
+			ptr = scratch;
+		}
+		while (left > 0) {
+			mutex_nohost.Lock();
+			r = nohost_->Pread(fd_, ptr, left, offset);
+		    mutex_nohost.Unlock();
+			if (r <= 0) {
+				if (errno == EINTR) {
+					continue;
+				}
+				break;
+			}
+			ptr += r;
+			offset += r;
+			left -= r;
+		}
+		*result = Slice(scratch, (r < 0) ? 0 : n - left);
+		if (r < 0) {
+			// An error: return a non-ok status
+			s = IOError(filename_, errno);
+		}
+		return s;
+}
+
+  virtual Status Close() {
+	  Status s;
+	  Status ns; // NOHOST
+	  if (close(pfd_) < 0) { s = IOError(filename_, errno); }
+	  pfd_ = -1;
+	  // NOHOST
+	  if (nohost_->Close(fd_) < 0) { ns = IOError(filename_, errno); }
+	  fd_ = -1;
+	  // NOHOST
+	  return ns;
+	}
+virtual Status Sync() {
+	  FILE* fp= fopen("write_trace.txt", "a");
+	  fprintf(fp, "SYNC()\n");
+	  fclose(fp);
+	return Status::OK();
+}
+virtual Status Fsync() {
+	  FILE* fp= fopen("write_trace.txt", "a");
+	  fprintf(fp, "FSYNC()\n");
+	  fclose(fp);
+	return Status::OK();
+}
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+  virtual Status Allocate(off_t offset, off_t len) { return Status::OK();}
+#endif
+};
+// NOHOST
+
+
+
+class PosixSequentialFile: public SequentialFile {
+ private:
+  std::string filename_;
+  FILE* file_;
+  int fd_;
+  bool use_os_buffer_;
+
+ public:
+  PosixSequentialFile(const std::string& fname, FILE* f,
+      const EnvOptions& options)
+      : filename_(fname), file_(f), fd_(fileno(f)),
+        use_os_buffer_(options.use_os_buffer) {
+  }
+  virtual ~PosixSequentialFile() { fclose(file_); }
+
+  virtual Status Read(size_t n, Slice* result, char* scratch) {
+    Status s;
+    size_t r = 0;
+    do {
+      r = fread_unlocked(scratch, 1, n, file_);
+    } while (r == 0 && ferror(file_) && errno == EINTR);
+    IOSTATS_ADD(bytes_read, r);
+    *result = Slice(scratch, r);
+    if (r < n) {
+      if (feof(file_)) {
+        // We leave status as ok if we hit the end of the file
+        // We also clear the error so that the reads can continue
+        // if a new data is written to the file
+        clearerr(file_);
+      } else {
+        // A partial read with an error: return a non-ok status
+        s = IOError(filename_, errno);
+      }
+    }
+    if (!use_os_buffer_) {
+      // we need to fadvise away the entire range of pages because
+      // we do not want readahead pages to be cached.
+      Fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED); // free OS pages
+    }
+    return s;
+  }
+
+  virtual Status Skip(uint64_t n) {
+    if (fseek(file_, static_cast<long int>(n), SEEK_CUR)) {
+      return IOError(filename_, errno);
+    }
+    return Status::OK();
+  }
 
   virtual Status InvalidateCache(size_t offset, size_t length) {
 #ifndef OS_LINUX
@@ -225,53 +555,52 @@ class PosixSequentialFile : public SequentialFile {
 };
 
 // pread() based random-access
-class PosixRandomAccessFile : public RandomAccessFile {
+class PosixRandomAccessFile: public RandomAccessFile {
  private:
   std::string filename_;
   int fd_;
   bool use_os_buffer_;
-  NoHostFs* nohost_; // NOHOST
 
  public:
   PosixRandomAccessFile(const std::string& fname, int fd,
-                                               const EnvOptions& options, NoHostFs* nohost)
-      : filename_(fname), fd_(fd), use_os_buffer_(options.use_os_buffer), nohost_(nohost) { // NOHOST
-   // assert(!options.use_mmap_reads || sizeof(void*) < 8);
+                        const EnvOptions& options)
+      : filename_(fname), fd_(fd), use_os_buffer_(options.use_os_buffer) {
+    assert(!options.use_mmap_reads || sizeof(void*) < 8);
   }
-  virtual ~PosixRandomAccessFile() {nohost_->Close(fd_);}
+  virtual ~PosixRandomAccessFile() { close(fd_); }
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
-          char* scratch) const {
-		//printf("PosixRandomAccessFile:Read(offset:%zu, size=%zu\n", offset, n);
+                      char* scratch) const {
+    Status s;
+    ssize_t r = -1;
+    size_t left = n;
+    char* ptr = scratch;
+    while (left > 0) {
+      r = pread(fd_, ptr, left, static_cast<off_t>(offset));
+      if (r <= 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        break;
+      }
+      ptr += r;
+      offset += r;
+      left -= r;
+    }
 
-		// NOHOST
-		Status s;
-		ssize_t r = -1;
-		size_t left = n;
-		char* ptr = scratch;
-		while (left > 0) {
-			//printf("PosixRandomAccessFile:Pread(offset:%zu, size=%zu\n", offset, left);
-			r = nohost_->Pread(fd_, ptr, left, static_cast<off_t>(offset));
-			if (r <= 0) {
-				if (errno == EINTR) {
-					continue;
-				}
-				break;
-			}
-			ptr += r;
-			offset += r;
-			left -= r;
-		}
-		*result = Slice(scratch, (r < 0) ? 0 : r);
-		if (r < 0) {
-			// An error: return a non-ok status
-			s = IOError(filename_, errno);
-		}
-
-		// NOHOST
-
-return s;
-}
+    IOSTATS_ADD_IF_POSITIVE(bytes_read, n - left);
+    *result = Slice(scratch, (r < 0) ? 0 : n - left);
+    if (r < 0) {
+      // An error: return a non-ok status
+      s = IOError(filename_, errno);
+    }
+    if (!use_os_buffer_) {
+      // we need to fadvise away the entire range of pages because
+      // we do not want readahead pages to be cached.
+      Fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED); // free OS pages
+    }
+    return s;
+  }
 
 #ifdef OS_LINUX
   virtual size_t GetUniqueId(char* id, size_t max_size) const {
@@ -651,11 +980,10 @@ class PosixWritableFile : public WritableFile {
   bool fallocate_with_keep_size_;
 #endif
   RateLimiter* rate_limiter_;
-  NoHostFs* nohost_;
 
  public:
   PosixWritableFile(const std::string& fname, int fd, size_t capacity,
-                    const EnvOptions& options, NoHostFs* nohost)
+                    const EnvOptions& options)
       : filename_(fname),
         fd_(fd),
         cursize_(0),
@@ -666,12 +994,11 @@ class PosixWritableFile : public WritableFile {
         pending_fsync_(false),
         last_sync_size_(0),
         bytes_per_sync_(options.bytes_per_sync),
-        rate_limiter_(options.rate_limiter),
-		nohost_(nohost){
+        rate_limiter_(options.rate_limiter) {
 #ifdef ROCKSDB_FALLOCATE_PRESENT
     fallocate_with_keep_size_ = options.fallocate_with_keep_size;
 #endif
-//    assert(!options.use_mmap_writes);
+    assert(!options.use_mmap_writes);
   }
 
   ~PosixWritableFile() {
@@ -711,7 +1038,7 @@ class PosixWritableFile : public WritableFile {
       cursize_ += left;
     } else {
       while (left != 0) {
-        ssize_t done = nohost_->Write(fd_, src, RequestToken(left));
+        ssize_t done = write(fd_, src, RequestToken(left));
         if (done < 0) {
           if (errno == EINTR) {
             continue;
@@ -746,7 +1073,7 @@ class PosixWritableFile : public WritableFile {
       // NOTE(ljin): we probably don't want to surface failure as an IOError,
       // but it will be nice to log these errors.
       int dummy __attribute__((unused));
-     // dummy = ftruncate(fd_, filesize_);
+      dummy = ftruncate(fd_, filesize_);
 #ifdef ROCKSDB_FALLOCATE_PRESENT
       // in some file systems, ftruncate only trims trailing space if the
       // new file size is smaller than the current size. Calling fallocate
@@ -764,7 +1091,7 @@ class PosixWritableFile : public WritableFile {
 #endif
     }
 
-    if (nohost_->Close(fd_) < 0) {
+    if (close(fd_) < 0) {
       s = IOError(filename_, errno);
     }
     fd_ = -1;
@@ -777,7 +1104,7 @@ class PosixWritableFile : public WritableFile {
     size_t left = cursize_;
     char* src = buf_.get();
     while (left != 0) {
-      ssize_t done = nohost_->Write(fd_, src, RequestToken(left));
+      ssize_t done = write(fd_, src, RequestToken(left));
       if (done < 0) {
         if (errno == EINTR) {
           continue;
@@ -810,7 +1137,7 @@ class PosixWritableFile : public WritableFile {
       return s;
     }
     TEST_KILL_RANDOM(rocksdb_kill_odds);
-    if (pending_sync_ && fdatasync(nohost_->GetFD()) < 0) {
+    if (pending_sync_ && fdatasync(fd_) < 0) {
       return IOError(filename_, errno);
     }
     TEST_KILL_RANDOM(rocksdb_kill_odds);
@@ -824,7 +1151,7 @@ class PosixWritableFile : public WritableFile {
       return s;
     }
     TEST_KILL_RANDOM(rocksdb_kill_odds);
-    if (pending_fsync_ && fsync(nohost_->GetFD()) < 0) {
+    if (pending_fsync_ && fsync(fd_) < 0) {
       return IOError(filename_, errno);
     }
     TEST_KILL_RANDOM(rocksdb_kill_odds);
@@ -889,20 +1216,22 @@ class PosixRandomRWFile : public RandomRWFile {
  private:
   const std::string filename_;
   int fd_;
-  NoHostFs* nohost_; // NOHOST
+  bool pending_sync_;
+  bool pending_fsync_;
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   bool fallocate_with_keep_size_;
 #endif
 
  public:
-  PosixRandomRWFile(const std::string& fname, int fd, const EnvOptions& options, NoHostFs* nohost)
+  PosixRandomRWFile(const std::string& fname, int fd, const EnvOptions& options)
       : filename_(fname),
         fd_(fd),
-		nohost_(nohost){
+        pending_sync_(false),
+        pending_fsync_(false) {
 #ifdef ROCKSDB_FALLOCATE_PRESENT
     fallocate_with_keep_size_ = options.fallocate_with_keep_size;
 #endif
-  //  assert(!options.use_mmap_writes && !options.use_mmap_reads);
+    assert(!options.use_mmap_writes && !options.use_mmap_reads);
   }
 
   ~PosixRandomRWFile() {
@@ -915,9 +1244,11 @@ class PosixRandomRWFile : public RandomRWFile {
     const char* src = data.data();
     size_t left = data.size();
     Status s;
+    pending_sync_ = true;
+    pending_fsync_ = true;
 
     while (left != 0) {
-      ssize_t done = nohost_->Pwrite(fd_, src, left, offset);
+      ssize_t done = pwrite(fd_, src, left, offset);
       if (done < 0) {
         if (errno == EINTR) {
           continue;
@@ -935,61 +1266,54 @@ class PosixRandomRWFile : public RandomRWFile {
   }
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
-          char* scratch) const {
-		//printf("PosixRandomAccessFile:Read(offset:%zu, size=%zu\n", offset, n);
-
-		// NOHOST
-		Status s;
-		ssize_t r = -1;
-		size_t left = n;
-		char* ptr = scratch;
-		while (left > 0) {
-			//printf("PosixRandomAccessFile:Pread(offset:%zu, size=%zu\n", offset, left);
-			r = nohost_->Pread(fd_, ptr, left, static_cast<off_t>(offset));
-			if (r <= 0) {
-				if (errno == EINTR) {
-					continue;
-				}
-				break;
-			}
-			ptr += r;
-			offset += r;
-			left -= r;
-		}
-		*result = Slice(scratch, (r < 0) ? 0 : r);
-		if (r < 0) {
-			// An error: return a non-ok status
-			s = IOError(filename_, errno);
-		}
-
-		// NOHOST
-
-return s;
-}
+                      char* scratch) const {
+    Status s;
+    ssize_t r = -1;
+    size_t left = n;
+    char* ptr = scratch;
+    while (left > 0) {
+      r = pread(fd_, ptr, left, static_cast<off_t>(offset));
+      if (r <= 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        break;
+      }
+      ptr += r;
+      offset += r;
+      left -= r;
+    }
+    IOSTATS_ADD_IF_POSITIVE(bytes_read, n - left);
+    *result = Slice(scratch, (r < 0) ? 0 : n - left);
+    if (r < 0) {
+      s = IOError(filename_, errno);
+    }
+    return s;
+  }
 
   virtual Status Close() {
     Status s = Status::OK();
-    if (nohost_->Close(fd_) < 0) {
+    if (fd_ >= 0 && close(fd_) < 0) {
       s = IOError(filename_, errno);
     }
     fd_ = -1;
     return s;
   }
 
-  virtual Status Sync() {/*
+  virtual Status Sync() {
     if (pending_sync_ && fdatasync(fd_) < 0) {
       return IOError(filename_, errno);
     }
-    pending_sync_ = false;*/
+    pending_sync_ = false;
     return Status::OK();
   }
 
-  virtual Status Fsync() {/*
+  virtual Status Fsync() {
     if (pending_fsync_ && fsync(fd_) < 0) {
       return IOError(filename_, errno);
     }
     pending_fsync_ = false;
-    pending_sync_ = false;*/
+    pending_sync_ = false;
     return Status::OK();
   }
 
@@ -1009,19 +1333,23 @@ return s;
 
 class PosixDirectory : public Directory {
  public:
-  explicit PosixDirectory(int fd, NoHostFs* nohost) : fd_(fd),nohost_(nohost) {} // NOHOST
-  ~PosixDirectory()  { nohost_->Close(fd_); }
+  explicit PosixDirectory(int fd) : fd_(fd) {}
+  ~PosixDirectory() {
+    close(fd_);
+  }
 
   virtual Status Fsync() {
+    if (fsync(fd_) == -1) {
+      return IOError("directory", errno);
+    }
     return Status::OK();
   }
 
  private:
   int fd_;
-  NoHostFs* nohost_; // NOHOST
 };
 
-static int LockOrUnlock(const std::string& fname, int fd, bool lock, NoHostFs* nohost) { // NOHOST add nfd and nohost
+static int LockOrUnlock(const std::string& fname, int fd, bool lock) {
   mutex_lockedFiles.Lock();
   if (lock) {
     // If it already exists in the lockedFiles set, then it is already locked,
@@ -1043,21 +1371,19 @@ static int LockOrUnlock(const std::string& fname, int fd, bool lock, NoHostFs* n
       return -1;
     }
   }
-  int value = nohost->Lock(fname, lock); // NOHOST
   errno = 0;
-/*  struct flock f;
+  struct flock f;
   memset(&f, 0, sizeof(f));
   f.l_type = (lock ? F_WRLCK : F_UNLCK);
   f.l_whence = SEEK_SET;
   f.l_start = 0;
   f.l_len = 0;        // Lock/unlock entire file
-  int value = fcntl(fd, F_SETLK, &f);*/
+  int value = fcntl(fd, F_SETLK, &f);
   if (value == -1 && lock) {
     // if there is an error in locking, then remove the pathname from lockedfiles
     lockedFiles.erase(fname);
   }
   mutex_lockedFiles.Unlock();
-
   return value;
 }
 
@@ -1090,332 +1416,343 @@ class PosixEnv : public Env {
     }
   }
 
-
   virtual Status NewSequentialFile(const std::string& fname,
-                                     unique_ptr<SequentialFile>* result,
-                                     const EnvOptions& options) override {
-  		//printf("Enter the NewSequentialFile(string %s)\n", fname.c_str());
-  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-      result->reset();
-      int fd = -1; // NOHOST
-
-      do {
-        fd = nohost->Open(fname.c_str(), 'r'); //NOHOST
-      } while (fd < -1 && errno == EINTR);
-      if (fd < -1) {
-        *result = nullptr;
-  		//printf("Exit:Fail the NewSequentialFile(string %s)\n", fname.c_str());
-        return IOError(fname, errno);
-      } else {
-        result->reset(new PosixSequentialFile(fname, fd, options, nohost)); //NOHOST
-  		//printf("Exit:Success the NewSequentialFile(string %s)\n", fname.c_str());
-        return Status::OK();
-      }
-    }
+                                   unique_ptr<SequentialFile>* result,
+                                   const EnvOptions& options) {
+	if(!IsSstExtention(fname)){
+		result->reset();
+		FILE* f = nullptr;
+		do {
+		  f = fopen(fname.c_str(), "r");
+		} while (f == nullptr && errno == EINTR);
+		if (f == nullptr) {
+		  *result = nullptr;
+		  return IOError(fname, errno);
+		} else {
+		  int fd = fileno(f);
+		  SetFD_CLOEXEC(fd, &options);
+		  result->reset(new PosixSequentialFile(fname, f, options));
+		  return Status::OK();
+		}
+	}
+	else{
+		result->reset();
+		mutex_nohost.Lock();
+		int fd = nohost->Open(fname, 'r'); //NOHOST
+		mutex_nohost.Unlock();
+		if (fd < -1) {
+			*result = nullptr;
+			return IOError(fname, errno);
+		}else{
+			result->reset(new NoHostSequentialFile(fname, fd, options, nohost)); //NOHOST
+			return Status::OK();
+		 }
+	}
+  }
 
   virtual Status NewRandomAccessFile(const std::string& fname,
-                                       unique_ptr<RandomAccessFile>* result,
-                                       const EnvOptions& options) override {
-  		//printf("Enter the NewRandomAccessFile(string %s)\n", fname.c_str());
-  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-      result->reset();
-      Status s;
-      int fd;
-      {
-        fd = nohost->Open(fname.c_str(), 'r'); //NOHOST
-      }
-      if (fd < 0) {
-  		//printf("Exit:Fail the NewRandomAccessFile(string %s)\n", fname.c_str());
-        s = IOError(fname, errno);
-      }/* else if (options.use_mmap_reads && sizeof(void*) >= 8) {
-        // Use of mmap for random reads has been removed because it
-        // kills performance when storage is fast.
-        // Use mmap when virtual address-space is plentiful.
-        uint64_t size;
-        s = GetFileSize(fname, &size);
-        if (s.ok()) {
-          void* base = mmap(nullptr, size, PROT_READ, MAP_SHARED, fd, 0);
-          if (base != MAP_FAILED) {
-            result->reset(new PosixMmapReadableFile(fd, fname, base,
-                                                    size, options));
-          } else {
-            s = IOError(fname, errno);
-          }
-        }
-        close(fd);
-        nohost->Close(nfd); // NOHOST
-      }*/ else {
-  		//printf("Exit:Success the NewRandomAccessFile(string %s)\n", fname.c_str());
-        result->reset(new PosixRandomAccessFile(fname, fd, options, nohost)); // NOHOST
-      }
-      return s;
-    }
+                                     unique_ptr<RandomAccessFile>* result,
+                                     const EnvOptions& options) {
+	if(!IsSstExtention(fname)){
+		result->reset();
+		Status s;
+		int fd = open(fname.c_str(), O_RDONLY);
+		SetFD_CLOEXEC(fd, &options);
+		if (fd < 0) {
+		  s = IOError(fname, errno);
+		} else if (options.use_mmap_reads && sizeof(void*) >= 8) {
+		  // Use of mmap for random reads has been removed because it
+		  // kills performance when storage is fast.
+		  // Use mmap when virtual address-space is plentiful.
+		  uint64_t size;
+		  s = GetFileSize(fname, &size);
+		  if (s.ok()) {
+			void* base = mmap(nullptr, size, PROT_READ, MAP_SHARED, fd, 0);
+			if (base != MAP_FAILED) {
+			  result->reset(new PosixMmapReadableFile(fd, fname, base,
+													  size, options));
+			} else {
+			  s = IOError(fname, errno);
+			}
+		  }
+		  close(fd);
+		} else {
+		  result->reset(new PosixRandomAccessFile(fname, fd, options));
+		}
+		return s;
+	}
+	else{
+		result->reset();
+		Status s;
+		int fd;
+		mutex_nohost.Lock();
+		fd = nohost->Open(fname, 'r'); //NOHOST
+		mutex_nohost.Unlock();
+		if (fd < 0) {
+			s = IOError(fname, errno);
+		}else {
+			result->reset(new NoHostRandomAccessFile(fname, fd, options, nohost)); // NOHOST
+		}
+		return s;
+	}
+  }
 
   virtual Status NewWritableFile(const std::string& fname,
-                                   unique_ptr<WritableFile>* result,
-                                   const EnvOptions& options) override {
-  		//printf("Enter the NewWritableFile(string %s)\n", fname.c_str());
-  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-      result->reset();
-      Status s;
-      int fd = -1;
-      do {
-        fd = nohost->Open(fname.c_str(), 'w'); // NOHOST
-      } while (fd < 0 && errno == EINTR);
-      if (fd < 0) {
-  		//printf("Exit:Fail the NewWritableFile(string %s)\n", fname.c_str());
-        s = IOError(fname, errno);
-      } else {
-        SetFD_CLOEXEC(fd, &options);
-        if (options.use_mmap_writes) {
-          if (!checkedDiskForMmap_) {
-            // this will be executed once in the program's lifetime.
-            // do not use mmapWrite on non ext-3/xfs/tmpfs systems.
-            if (!SupportsFastAllocate(fname)) {
-              forceMmapOff = true;
-            }
-            checkedDiskForMmap_ = true;
-          }
-        }
-        if (options.use_mmap_writes && !forceMmapOff) {
-          //result->reset(new PosixMmapFile(fname, fd, page_size_, options));
-            EnvOptions no_mmap_writes_options = options;
-            no_mmap_writes_options.use_mmap_writes = false;
-    		//printf("Exit:Success the NewWritableFile (truly mmap)(string %s)\n", fname.c_str());
-            result->reset(new PosixWritableFile(fname, fd, page_size_, no_mmap_writes_options, nohost)); // NOHOST
-        } else {
-          // disable mmap writes
-          EnvOptions no_mmap_writes_options = options;
-          no_mmap_writes_options.use_mmap_writes = false;
+                                 unique_ptr<WritableFile>* result,
+                                 const EnvOptions& options) {
 
-  		//printf("Exit:Success the NewWritableFile(string %s)\n", fname.c_str());
-          result->reset(new PosixWritableFile(fname, fd, page_size_, no_mmap_writes_options, nohost)); // NOHOST
-        }
-      }
-      return s;
-    }
+	if(!IsSstExtention(fname)){
+		result->reset();
+		Status s;
+		int fd = -1;
+		do {
+		  fd = open(fname.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0644);
+		} while (fd < 0 && errno == EINTR);
+		if (fd < 0) {
+		  s = IOError(fname, errno);
+		} else {
+		  SetFD_CLOEXEC(fd, &options);
+		  if (options.use_mmap_writes) {
+			if (!checkedDiskForMmap_) {
+			  // this will be executed once in the program's lifetime.
+			  // do not use mmapWrite on non ext-3/xfs/tmpfs systems.
+			  if (!SupportsFastAllocate(fname)) {
+				forceMmapOff = true;
+			  }
+			  checkedDiskForMmap_ = true;
+			}
+		  }
+		  if (options.use_mmap_writes && !forceMmapOff) {
+			result->reset(new PosixMmapFile(fname, fd, page_size_, options));
+		  } else {
+			// disable mmap writes
+			EnvOptions no_mmap_writes_options = options;
+			no_mmap_writes_options.use_mmap_writes = false;
+
+			result->reset(
+				new PosixWritableFile(fname, fd, 65536, no_mmap_writes_options)
+			);
+		  }
+		}
+		return s;
+	  }
+	else{
+		result->reset();
+		Status s;
+		int fd = -1;
+		int pfd = -1;
+		do {
+		  pfd = open(fname.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0644);
+		  mutex_nohost.Lock();
+		  fd = nohost->Open(fname, 'w'); // NOHOST
+		  mutex_nohost.Unlock();
+		} while (fd < 0 && errno == EINTR);
+		if (fd < 0) {
+			////printf("Exit:Fail the NewWritableFile(string %s)\n", fname.c_str());
+			s = IOError(fname, errno);
+		}else{
+			EnvOptions no_mmap_writes_options = options;
+			no_mmap_writes_options.use_mmap_writes = false;
+			////printf("Exit:Success the NewWritableFile(string %s)\n", fname.c_str());
+			result->reset(new NoHostWritableFile(fname, fd, no_mmap_writes_options, nohost, pfd)); // NOHOST
+		}
+		return s;
+	}
+  }
 
   virtual Status NewRandomRWFile(const std::string& fname,
                                  unique_ptr<RandomRWFile>* result,
                                  const EnvOptions& options) {
+	if(!IsSstExtention(fname)){
+		result->reset();
+		// no support for mmap yet
+		if (options.use_mmap_writes || options.use_mmap_reads) {
+		  return Status::NotSupported("No support for mmap read/write yet");
+		}
+		Status s;
+		const int fd = open(fname.c_str(), O_CREAT | O_RDWR, 0644);
+		if (fd < 0) {
+		  s = IOError(fname, errno);
+		} else {
+		  SetFD_CLOEXEC(fd, &options);
+		  result->reset(new PosixRandomRWFile(fname, fd, options));
+		}
+		return s;
+	}
+	else{
+		result->reset();
+		Status s;
+		int fd = -1;
+		int pfd = -1;
+		mutex_nohost.Lock();
+		fd = nohost->Open(fname, 'a'); //NOHOST
+		mutex_nohost.Unlock();
+		pfd = open(fname.c_str(), O_RDWR, 0644);
+		if (fd < 0) {
+			s = IOError(fname, errno);
+		} else {
+			result->reset(new NoHostRandomRWFile(fname, fd, options, nohost, pfd));
+		}
+		return s;
+	}
+  }
+
+  virtual Status NewDirectory(const std::string& name,
+                              unique_ptr<Directory>* result) {
     result->reset();
-    // no support for mmap yet
-    if (options.use_mmap_writes || options.use_mmap_reads) {
-      return Status::NotSupported("No support for mmap read/write yet");
-    }
-    Status s;
-    //const int fd = open(fname.c_str(), O_CREAT | O_RDWR, 0644);
-    const int fd = nohost->Open(fname.c_str(), 'w');
+    const int fd = open(name.c_str(), 0);
     if (fd < 0) {
+      return IOError(name, errno);
+    } else {
+      result->reset(new PosixDirectory(fd));
+    }
+    return Status::OK();
+  }
+
+  virtual bool FileExists(const std::string& fname) {
+    return access(fname.c_str(), F_OK) == 0;
+  }
+
+  virtual Status GetChildren(const std::string& dir,
+                             std::vector<std::string>* result) {
+    result->clear();
+    DIR* d = opendir(dir.c_str());
+    if (d == nullptr) {
+      return IOError(dir, errno);
+    }
+    struct dirent* entry;
+    while ((entry = readdir(d)) != nullptr) {
+      result->push_back(entry->d_name);
+    }
+    closedir(d);
+    return Status::OK();
+  }
+
+  virtual Status DeleteFile(const std::string& fname) {
+    Status result;
+    if (unlink(fname.c_str()) != 0) {
+      result = IOError(fname, errno);
+    }
+    if(IsSstExtention(fname)){
+		mutex_nohost.Lock();
+		nohost->DeleteFile(fname);
+		mutex_nohost.Unlock();
+    }
+    return result;
+  };
+
+  virtual Status CreateDir(const std::string& name) {
+    Status result;
+    if (mkdir(name.c_str(), 0755) != 0) {
+      result = IOError(name, errno);
+    }
+    return result;
+  };
+
+  virtual Status CreateDirIfMissing(const std::string& name) {
+    Status result;
+    if (mkdir(name.c_str(), 0755) != 0) {
+      if (errno != EEXIST) {
+        result = IOError(name, errno);
+      } else if (!DirExists(name)) { // Check that name is actually a
+                                     // directory.
+        // Message is taken from mkdir
+        result = Status::IOError("`"+name+"' exists but is not a directory");
+      }
+    }
+    return result;
+  };
+
+  virtual Status DeleteDir(const std::string& name) {
+    Status result;
+    if (rmdir(name.c_str()) != 0) {
+      result = IOError(name, errno);
+    }
+    return result;
+  };
+
+  virtual Status GetFileSize(const std::string& fname, uint64_t* size) {
+    Status s;
+
+	if(IsSstExtention(fname)){
+		if((*size = nohost->GetFileSize(fname)) == (uint64_t)-1){
+			*size = 0;
+			s = IOError(fname, errno);
+		}
+		return s;
+	}
+
+    struct stat sbuf;
+    if (stat(fname.c_str(), &sbuf) != 0) {
+      *size = 0;
       s = IOError(fname, errno);
     } else {
-     // SetFD_CLOEXEC(fd, &options);
-      result->reset(new PosixRandomRWFile(fname, fd, options, nohost));
+      *size = sbuf.st_size;
     }
     return s;
   }
 
-  virtual Status NewDirectory(const std::string& name,
-                                unique_ptr<Directory>* result) override {
-  		//printf("Enter the NewDirectory(string %s)\n", name.c_str());
-  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-      result->reset();
-      int fd;
-      {
-        fd = nohost->Open(name.c_str(), 'd'); //NOHOST
-      }
-      if (fd < 0) {
-      	//printf("Exit:Fail the NewDirectory(string %s)\n", name.c_str());
-        return IOError(name, errno);
-      } else {
-        result->reset(new PosixDirectory(fd, nohost)); // NOHOST
-      }
-    	//printf("Exit:Success the NewDirectory(string %s)\n", name.c_str());
-      return Status::OK();
+  virtual Status GetFileModificationTime(const std::string& fname,
+                                         uint64_t* file_mtime) {
+	if(IsSstExtention(fname)){
+		*file_mtime = nohost->GetFileModificationTime(fname);
+		return Status::OK();
+	}
+
+    struct stat s;
+    if (stat(fname.c_str(), &s) !=0) {
+      return IOError(fname, errno);
     }
+    *file_mtime = static_cast<uint64_t>(s.st_mtime);
+    return Status::OK();
+  }
+  virtual Status RenameFile(const std::string& src, const std::string& target) {
+    Status result;
 
-    virtual bool FileExists(const std::string& fname) override {
-      	//printf("Enter: the FileExists(string %s)\n", fname.c_str());
-  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-      int result = nohost->Access(fname.c_str()); // NOHOST
+	if(IsSstExtention(src)){
+		mutex_nohost.Lock();
+		if (nohost->Rename(src, target) != 0) {
+			result = IOError(src, errno);
+			return result;
+		}
+		mutex_nohost.Unlock();
+	}
 
-      if (result == 0) {
-      	//printf("Exit:Success the FileExists(string %s)\n", fname.c_str());
-        return true;
-      }
-
-      return false;
+    if (rename(src.c_str(), target.c_str()) != 0) {
+      result = IOError(src, errno);
     }
+    return result;
+  }
 
-    virtual Status GetChildren(const std::string& dir,
-                               std::vector<std::string>* result) override {
-  		//printf("Enter the GetChildren(string %s)\n", dir.c_str());
-  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-      result->clear();
-
-      // NOHOST
-      int d = -1;
-      d = nohost->Open(dir.c_str(), 'd');
-      Node* nentry;
-      int i = 0;
-      while ((nentry = nohost->ReadDir(d)) != NULL) {
-      //	nohost->global_file_tree->printAll();
-      	result->push_back(nentry->name->c_str());
-        i++;
-      }
-      nohost->Close(d);
-      // NOHOST
-
-    	//printf("Exit:Success the GetChildren(string %s)\n", dir.c_str());
-      return Status::OK();
+  virtual Status LockFile(const std::string& fname, FileLock** lock) {
+    *lock = nullptr;
+    Status result;
+    int fd = open(fname.c_str(), O_RDWR | O_CREAT, 0644);
+    if (fd < 0) {
+      result = IOError(fname, errno);
+    } else if (LockOrUnlock(fname, fd, true) == -1) {
+      result = IOError("lock " + fname, errno);
+      close(fd);
+    } else {
+      SetFD_CLOEXEC(fd, nullptr);
+      PosixFileLock* my_lock = new PosixFileLock;
+      my_lock->fd_ = fd;
+      my_lock->filename = fname;
+      *lock = my_lock;
     }
+    return result;
+  }
 
-    virtual Status DeleteFile(const std::string& fname) override {
-  		//printf("Enter the DeleteFile(string %s)\n", fname.c_str());
-  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-      Status result;
-
-      // NOHOST
-      if (nohost->DeleteFile(fname) != 0) {
-        	//printf("Exit:Fail the DeleteFile(string %s) -- nohost\n", fname.c_str());
-        	result = IOError(fname, errno);
-      }
-      // NOHOST
-    	//printf("Exit:Success the DeleteFile(string %s)\n", fname.c_str());
-      return result;
-    };
-
-    virtual Status CreateDir(const std::string& name) override {
-  		//printf("Enter the CreateDir(string %s)\n", name.c_str());
-  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-      Status result;
-
-      // NOHOST
-      if (nohost->CreateDir(name) != 0) {
-        	//printf("Exit:Fail the CreateDir(string %s)\n", name.c_str());
-        result = IOError(name, errno);
-      }
-      // NOHOST
-
-    	//printf("Exit:Success the CreateDir(string %s)\n", name.c_str());
-      return result;
-    };
-
-    virtual Status CreateDirIfMissing(const std::string& name) override {
-  		//printf("Enter the CreateDirIfMissing(string %s)\n", name.c_str());
-  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-      Status result;
-
-      // NOHOST
-      if (nohost->CreateDir(name) != 0) {
-        if (errno != EEXIST) {
-      	  	//printf("Exit:Fail the CreateDir(string %s)\n", name.c_str());
-      	  	result = IOError(name, errno);
-        } else if (!nohost->DirExists(name)) {
-      	  // Check that name is actually a directory.
-          // Message is taken from mkdir
-      	  result = Status::IOError("`"+name+"' exists but is not a directory");
-        }
-      }
-      // NOHOST
-  	//printf("Exit:Success the CreateDir(string %s)\n", name.c_str());
-      return result;
-    };
-
-    virtual Status DeleteDir(const std::string& name) override {
-  		//printf("Enter the DeleteDir(string %s)\n", name.c_str());
-  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-      Status result;
-
-      if (nohost->DeleteDir(name) != 0) {
-        result = IOError(name, errno);
-      }
-
-    	//printf("Exit:Success the DeleteDir(string %s), status:%s\n", name.c_str(), result.ToString().c_str());
-
-    	return result;
-    };
-
-    virtual Status GetFileSize(const std::string& fname,
-                               uint64_t* size) override {
-  		//printf("Enter the GetFileSize(string %s)\n", fname.c_str());
-  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-      Status s;
-
-        *size = nohost->GetFileSize(fname); //NOHOST
-      return s;
+  virtual Status UnlockFile(FileLock* lock) {
+    PosixFileLock* my_lock = reinterpret_cast<PosixFileLock*>(lock);
+    Status result;
+    if (LockOrUnlock(my_lock->filename, my_lock->fd_, false) == -1) {
+      result = IOError("unlock", errno);
     }
-
-    virtual Status GetFileModificationTime(const std::string& fname,
-                                           uint64_t* file_mtime) override {
-  		//printf("Enter the GetFileModificationTime(string %s)\n", fname.c_str());
-  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-
-      // NOHOST
-      uint64_t mtime = 0;
-      if ((mtime = nohost->GetFileModificationTime(fname)) != 1) {
-        	//printf("Exit:Fail the GetFileModificationTime(string %s)\n", fname.c_str());
-        return IOError(fname, errno);
-      }
-      *file_mtime = mtime;
-      //NOHOST
-
-      return Status::OK();
-    }
-    virtual Status RenameFile(const std::string& src,
-                              const std::string& target) override {
-  		//printf("Enter the RenameFile(string %s, string %s)\n", src.c_str(), target.c_str());
-  		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-      Status result;
-
-      // NOHOST
-      if (nohost->Rename(src.c_str(), target.c_str()) != 0) {
-        result = IOError(src, errno);
-      }
-      // NOHOST
-    	//printf("Exit:Success the RenameFile(string %s)\n", src.c_str());
-      return result;
-    }
-
-    virtual Status LockFile(const std::string& fname, FileLock** lock) override {
-    		//printf("Enter the LockFile( %s )\n", fname.c_str());
-    		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-        *lock = nullptr;
-        Status result;
-        int fd;
-
-        {
-          fd = nohost->Open(fname.c_str(), 'a'); // NOHOST
-        }
-        if (fd < 0) {
-          result = IOError(fname, errno);
-        } else if (LockOrUnlock(fname, fd, true, nohost) == -1) { // NOHOST
-          result = IOError("lock " + fname, errno);
-          nohost->Close(fd); // NOHOST
-        } else {
-          PosixFileLock* my_lock = new PosixFileLock;
-          my_lock->fd_ = fd;
-          my_lock->filename = fname;
-          *lock = my_lock;
-        }
-
-    	//printf("Exit: the LockFile( %s )\n", fname.c_str());
-        return result;
-      }
-
-      virtual Status UnlockFile(FileLock* lock) override {
-        PosixFileLock* my_lock = reinterpret_cast<PosixFileLock*>(lock);
-    	//printf("Enter: the UnlockFile( %s )\n", my_lock->filename.c_str());
-    	//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-        Status result;
-        if (LockOrUnlock(my_lock->filename, my_lock->fd_, false, nohost) == -1) { // NOHOST
-          result = IOError("unlock", errno);
-        }
-        nohost->Close(my_lock->fd_); // NOHOST
-        delete my_lock;
-    	//printf("Exit: the UnlockFile( %s )\n", my_lock->filename.c_str());
-        return result;
-      }
+    close(my_lock->fd_);
+    delete my_lock;
+    return result;
+  }
 
   virtual void Schedule(void (*function)(void*), void* arg, Priority pri = LOW);
 
@@ -1451,27 +1788,18 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewLogger(const std::string& fname,
-                              shared_ptr<Logger>* result) override {
-   		//printf("Enter the NewLogger(string %s)\n", fname.c_str());
-   		//printf("pid:%d, tid:%ld\n", getpid(), syscall(SYS_gettid));
-       FILE* f = NULL;
-       int nfd = 0; // NOHOST
-       {
-       //  f = fopen(fname.c_str(), "w");
-         nfd = nohost->Open(fname.c_str(), 'w'); // NOHOST
-       }
-       if (nfd < 0) {
-         result->reset();
-     	//printf("Exit:Fail the NewLogger(string %s)\n", fname.c_str());
-         return IOError(fname, errno);
-       } else {
-         //int fd = 0;//fileno(f);
-      //   SetFD_CLOEXEC(fd, nullptr);
-         result->reset(new PosixLogger(f, &PosixEnv::gettid, nfd, nohost, this)); // NOHOST
-   		//printf("Exit:Success the NewLogger(string %s)\n", fname.c_str());
-         return Status::OK();
-       }
-     }
+                           shared_ptr<Logger>* result) {
+    FILE* f = fopen(fname.c_str(), "w");
+    if (f == nullptr) {
+      result->reset();
+      return IOError(fname, errno);
+    } else {
+      int fd = fileno(f);
+      SetFD_CLOEXEC(fd, nullptr);
+      result->reset(new PosixLogger(f, &PosixEnv::gettid, this));
+      return Status::OK();
+    }
+  }
 
   virtual uint64_t NowMicros() {
     return std::chrono::duration_cast<std::chrono::microseconds>(
@@ -1508,22 +1836,19 @@ class PosixEnv : public Env {
   }
 
   virtual Status GetAbsolutePath(const std::string& db_path,
-                                 std::string* output_path) override {
+      std::string* output_path) {
     if (db_path.find('/') == 0) {
       *output_path = db_path;
       return Status::OK();
     }
 
- /*   char the_path[256];
+    char the_path[256];
     char* ret = getcwd(the_path, 256);
     if (ret == nullptr) {
       return Status::IOError(strerror(errno));
-    }*/
-    std::string nret = nohost->GetAbsolutePath(); //NOHOST
+    }
 
-    *output_path = nret;
-
-  	//printf("original absol:%s, nohost absol:%s\n", output_path->c_str(), nret.c_str()); // NOHOST
+    *output_path = ret;
     return Status::OK();
   }
 
@@ -1590,8 +1915,11 @@ class PosixEnv : public Env {
 
   // Returns true iff the named directory exists and is a directory.
   virtual bool DirExists(const std::string& dname) {
-
-    return nohost->DirExists(dname); // stat() failed return false
+    struct stat statbuf;
+    if (stat(dname.c_str(), &statbuf) == 0) {
+      return S_ISDIR(statbuf.st_mode);
+    }
+    return false; // stat() failed return false
   }
 
   bool SupportsFastAllocate(const std::string& path) {
@@ -1865,7 +2193,6 @@ PosixEnv::PosixEnv() : checkedDiskForMmap_(false),
                        page_size_(getpagesize()),
                        thread_pools_(Priority::TOTAL) {
   PthreadCall("mutex_init", pthread_mutex_init(&mu_, nullptr));
-
   nohost = new NoHostFs(1024*1024*16); // NOHOST
 }
 

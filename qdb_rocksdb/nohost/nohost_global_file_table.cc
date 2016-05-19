@@ -10,11 +10,7 @@ namespace rocksdb{
 // Node implementation
 uint64_t Node::GetSize(){
 	if(isfile){
-		size_t total = 0;
-		for(size_t i = 0; i < file_info->size(); i++){
-			total += (file_info->at(i)->size);
-		}
-		return total;
+		return size;
 	}
 	else{
 		return children->size();
@@ -24,13 +20,13 @@ uint64_t Node::GetSize(){
 
 // GlobalFileTableTree implementation
 Node* GlobalFileTableTree::DirectoryTraverse(const std::string path, bool isCreate){
-	std::string subpath;
+/*	std::string subpath;
 	if(path[0] == '/')
 		subpath = path.substr(1, path.size()-1);
 	else
-		subpath = path;
+		subpath = path;*/
 
-	std::vector<std::string> path_list = split(subpath, '/');
+	std::vector<std::string> path_list = split(path, '*');
 	std::vector<std::string>::iterator iter = path_list.begin();
 	while(iter != path_list.end()){
 		if(iter->compare("") == 0){
@@ -74,7 +70,7 @@ Node* GlobalFileTableTree::FindChild(Node* dir, std::string name){
 Node* GlobalFileTableTree::CreateDir(std::string name){
 
 
-	std::vector<std::string> path_list = split(name, '/');
+	std::vector<std::string> path_list = split(name, '*');
 	if(path_list.size() == 0){
 		std::cout <<"A file must have a name."<<std::endl;
 		return NULL;
@@ -102,7 +98,7 @@ Node* GlobalFileTableTree::CreateDir(std::string name){
 	return newdir;
 }
 Node* GlobalFileTableTree::CreateFile(std::string name){
-	std::vector<std::string> path_list = split(name, '/');
+	std::vector<std::string> path_list = split(name, '*');
 	if(path_list.size() == 0){
 //		std::cout <<"A file must have a name."<<std::endl;
 		return NULL;
@@ -113,14 +109,12 @@ Node* GlobalFileTableTree::CreateFile(std::string name){
 	Node* curdir = DirectoryTraverse(name, false);
 	if(curdir != NULL){
 		errno = EEXIST; // No such file or directory
-//		std::cout << name <<" file already exist."<<std::endl;
 		return NULL;
 	}
 
 	curdir = DirectoryTraverse(name, true);
 	if(curdir == NULL){
 		errno = ENOENT; // No such file or directory
-//		std::cout << name <<" file already exist."<<std::endl;
 		return NULL;
 	}
 	Node* newfile = new Node(new std::string(new_file_name), true, curdir);
@@ -130,7 +124,7 @@ Node* GlobalFileTableTree::CreateFile(std::string name){
 }
 
 Node* GlobalFileTableTree::Link(std::string src, std::string target){
-	std::vector<std::string> path_list = split(src, '/');
+	std::vector<std::string> path_list = split(target, '*');
 	if(path_list.size() == 0){
 //		std::cout <<"A file must have a name."<<std::endl;
 		return NULL;
@@ -138,29 +132,41 @@ Node* GlobalFileTableTree::Link(std::string src, std::string target){
 
 	std::string new_file_name = path_list.back();
 
-	Node* curdir = DirectoryTraverse(src, false);
-	if(curdir != NULL){
+	Node* targetnode = GetNode(target);
+	if(targetnode != NULL){
 		errno = EEXIST; // File already exists
-//		std::cout << src <<" file already exist."<<std::endl;
 		return NULL;
 	}
-	curdir = DirectoryTraverse(src, true);
 
-	Node* target_node = GetNode(target);
-	if(target_node == NULL){
+	Node* srcnode = GetNode(src);
+	if(srcnode == NULL){
 		errno = ENOENT; // No such file or directory
-//		std::cout << src <<" a target file doesn't exist."<<std::endl;
 		return NULL;
 	}
 
-	target_node->link_count++;
-	curdir->children->push_front(target_node);
+	if(srcnode->isfile){
+		srcnode->file_info->at(0)->link_count++;
+		targetnode = CreateFile(target);
+		delete targetnode->file_info;
+		targetnode->file_info = srcnode->file_info;
+		targetnode->size = srcnode->size;
+		targetnode->last_modified_time = srcnode->last_modified_time;
+	}
+	else{
+		srcnode->link_count++;
+		targetnode = CreateDir(target);
+		delete targetnode->children;
+		targetnode->children = srcnode->children;
+		targetnode->size = srcnode->size;
+		targetnode->last_modified_time = srcnode->last_modified_time;
+	}
 
-	return target_node;
+
+	return targetnode;
 }
 
 int GlobalFileTableTree::DeleteDir(std::string name){
-	std::vector<std::string> path_list = split(name, '/');
+	std::vector<std::string> path_list = split(name, '*');
 	if(path_list.size() == 0){
 		errno = ENOENT; // No such file or directory
 //		std::cout <<"A file must have a name."<<std::endl;
@@ -192,10 +198,6 @@ int GlobalFileTableTree::DeleteDir(std::string name){
 	}
 
 	curdir->link_count--;
-	if(curdir->link_count > 0)
-		return 0;
-
-//	RecursiveRemoveDir(curdir);
 
 	curdir = curdir->parent;
 	std::list<Node*>::iterator iter = curdir->children->begin();
@@ -211,7 +213,7 @@ int GlobalFileTableTree::DeleteDir(std::string name){
 	return -1;
 }
 bool GlobalFileTableTree::RecursiveRemoveDir(Node* cur){
-	if(cur->isfile)
+/*	if(cur->isfile)
 		return true;
 	if(cur->children->size() == 0)
 		return true;
@@ -228,12 +230,13 @@ bool GlobalFileTableTree::RecursiveRemoveDir(Node* cur){
 			iter++;
 		}
 		return true;
-	}
+	}*/
+	return true;
 }
 
 
 int GlobalFileTableTree::DeleteFile(std::string name){
-	std::vector<std::string> path_list = split(name, '/');
+	std::vector<std::string> path_list = split(name, '*');
 	if(path_list.size() == 0){
 //		std::cout <<"A file must have a name."<<std::endl;
 		return -1;
@@ -251,15 +254,13 @@ int GlobalFileTableTree::DeleteFile(std::string name){
 		return -1;
 	}
 
-	curfile->link_count--;
-	if(curfile->link_count > 0)
-		return 0;
+	curfile->file_info->at(0)->link_count--;
 
 	Node* curdir = curfile->parent;
 	std::list<Node*>::iterator iter = curdir->children->begin();
 	while(iter != curdir->children->end()){
 		if((*iter)->name->compare(remove_file_name) == 0){
-			FreeAllocatedPage(*iter);
+			if(curfile->file_info->at(0)->link_count == 0) FreeAllocatedPage(*iter);
 			delete (*iter);
 			curdir->children->erase(iter);
 			return 0;
@@ -296,7 +297,7 @@ Node* GlobalFileTableTree::GetNode(std::string name){
 int GlobalFileTableTree::FreeAllocatedPage(Node* node){
 	if(!node->isfile) return -1;
 	std::vector<FileSegInfo*>::iterator iter = node->file_info->begin();
-	size_t i = 0;
+	uint64_t i = 0;
 	while(iter != node->file_info->end()){
 		i = (*iter)->start_address / page_size;
 		if(i < free_page_bitmap->size())
@@ -322,24 +323,15 @@ bool GlobalFileTableTree::print(Node* cur, std::string indent){
 		return true;
 	else{
 		std::list<Node*>::iterator iter = cur->children->begin();
+		uint64_t size = 0;
 		while(iter != cur->children->end()){
-			std::cout << indent << (*iter)->name->c_str() << ", type:" << (*iter)->isfile
-					<< std::endl;
-
-			if((*iter)->isfile){
-				printf("Allocated page::  size:%zu\n", (*iter)->file_info->size());
-
-				for(unsigned int i =0; i < (*iter)->file_info->size(); i++){
-					size_t size = ((*iter)->file_info)->at(i)->GetStartAddress();
-					printf("--------------------------------------------------------\n");
-					printf("%zu,    ", (size / page_size));
-					printf("--------------------------------------------------------\n");
-				}
-				printf("\n");
-			}
-			print((*iter), indent + "   ");
+			size += (*iter)->GetSize();
 			iter++;
 		}
+
+		FILE* fp = fopen("pdf_size", "a");
+		fprintf(fp, "%zu\n", size);
+		fclose(fp);
 		return true;
 	}
 }
