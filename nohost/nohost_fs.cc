@@ -686,6 +686,7 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 		else{
 			rsize = pread(flash_fd, buf,((buf_start + buf_offset) - offset), offset);
 			if(rsize < 0){ std::cout << "read error\n"; return rsize; }
+			if(!ispread) entry->r_offset += (off_t)((buf_start + buf_offset) - offset);
 			buf += rsize;
 			memcpy(buf, tbuf, (offset + dsize) - (buf_start + buf_offset));
 			if(!ispread) entry->r_offset += (off_t)((offset + dsize) - (buf_start + buf_offset));
