@@ -13,7 +13,7 @@
 #include "nohost_global_file_table.h"
 
 
-/*#define ENABLE_LIBFTL*/
+#define ENABLE_LIBFTL
 #ifdef ENABLE_LIBFTL
 
 extern "C" {

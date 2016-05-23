@@ -156,6 +156,9 @@ class PosixEnv : public Env {
     // All threads must be joined before the deletion of
     // thread_status_updater_.
     delete thread_status_updater_;
+
+	/* chamdoo */
+  	delete nohost;
   }
 
   void SetFD_CLOEXEC(int fd, const EnvOptions* options) {
