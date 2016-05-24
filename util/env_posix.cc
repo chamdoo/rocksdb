@@ -71,7 +71,7 @@ bool IsSstExtention(std::string name){
 	std::string ex = list.back();
 	ex = ex.substr(0, 3);
 	//printf("DEBUG:: %s\n", ex.c_str());
-	return (ex.compare("sst") == 0 || ex.compare("ldb") == 0);
+	return (ex.compare("sst") == 0 || ex.compare("ldb") == 0 || ex.compare("log") == 0);
 }
 
 extern port::Mutex mutex_nohost;
@@ -156,6 +156,9 @@ class PosixEnv : public Env {
     // All threads must be joined before the deletion of
     // thread_status_updater_.
     delete thread_status_updater_;
+
+	/* chamdoo */
+  	delete nohost;
   }
 
   void SetFD_CLOEXEC(int fd, const EnvOptions* options) {

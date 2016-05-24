@@ -119,7 +119,8 @@ am__v_AR_ = $(am__v_AR_$(AM_DEFAULT_VERBOSITY))
 am__v_AR_0 = @echo "  AR      " $@;
 am__v_AR_1 =
 
-AM_LINK = $(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS) $(COVERAGEFLAGS) #../bdbm_drv/frontend/user/libftl.a ../bdbm_drv/devices/libramdrive/libramdrive.a  
+#AM_LINK = $(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS) $(COVERAGEFLAGS) #../bdbm_drv/frontend/user/libftl.a ../bdbm_drv/devices/libramdrive/libramdrive.a  
+AM_LINK = $(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS) $(COVERAGEFLAGS) ../bdbm_drv/frontend/user/libftl.a ../bdbm_drv/devices/libramdrive/libramdrive.a  
 
 
 
@@ -138,8 +139,8 @@ OPT += -DNDEBUG
 endif
 
 # chamdoo
-#OPT += -DROCKSDB_LITE
-#LIBFTL_INC += \
+OPT += -DROCKSDB_LITE
+LIBFTL_INC += \
 	-I../bdbm_drv/frontend/nvme \
 	-I../bdbm_drv/ftl \
 	-I../bdbm_drv/include \
@@ -158,8 +159,8 @@ endif
 	#../bdbm_drv/devices/libramdrive/libramdrive.a \
 
 
-#CFLAGS += $(LIBFTL_INC) 
-#CXXFLAGS += $(LIBFTL_INC) 
+CFLAGS += $(LIBFTL_INC) 
+CXXFLAGS += $(LIBFTL_INC) 
 # end
 
 ifneq ($(filter -DROCKSDB_LITE,$(OPT)),)
