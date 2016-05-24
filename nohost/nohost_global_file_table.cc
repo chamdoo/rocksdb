@@ -264,6 +264,13 @@ int GlobalFileTableTree::DeleteFile(std::string name){
 		if((*iter)->name->compare(remove_file_name) == 0){
 			if(curfile->file_info->at(0)->link_count == 0) FreeAllocatedPage(*iter);
 			delete (*iter);
+			for(int i = 0; i < (*iter)->file_info->size(); i++){
+				//====================================================================
+				/*printf("start address: %d,  size: %d",
+						(*iter)->file_info->at(i)->start_address,
+						(*iter)->file_info->at(i)->size);*/
+				//====================================================================
+			}
 			curdir->children->erase(iter);
 			return 0;
 		}
