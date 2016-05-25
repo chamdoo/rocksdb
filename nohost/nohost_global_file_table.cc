@@ -237,6 +237,8 @@ bool GlobalFileTableTree::RecursiveRemoveDir(Node* cur){
 }
 
 
+extern int libftl_trim (uint64_t boffset, uint64_t bsize);
+
 int GlobalFileTableTree::DeleteFile(std::string name){
 	std::vector<std::string> path_list = split(name, '*');
 	if(path_list.size() == 0){
@@ -263,14 +265,21 @@ int GlobalFileTableTree::DeleteFile(std::string name){
 	while(iter != curdir->children->end()){
 		if((*iter)->name->compare(remove_file_name) == 0){
 			if(curfile->file_info->at(0)->link_count == 0) FreeAllocatedPage(*iter);
-			delete (*iter);
-			for(int i = 0; i < (*iter)->file_info->size(); i++){
+			for(int i = 0; i < (int)(*iter)->file_info->size(); i++){
 				//====================================================================
-				/*printf("start address: %d,  size: %d",
+				if ((*iter)->file_info->at(i)->size != 0) {
+					/*
+					printf("start address: %d,  size: %d\n",
+						(int)(*iter)->file_info->at(i)->start_address,
+						(int)(*iter)->file_info->at(i)->size);
+					*/
+					libftl_trim (
 						(*iter)->file_info->at(i)->start_address,
-						(*iter)->file_info->at(i)->size);*/
+						(*iter)->file_info->at(i)->size);
+				}
 				//====================================================================
 			}
+			delete (*iter);
 			curdir->children->erase(iter);
 			return 0;
 		}

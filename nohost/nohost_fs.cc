@@ -11,6 +11,7 @@ namespace rocksdb{
 #ifdef ENABLE_LIBFTL
 
 bdbm_drv_info_t* _bdi = NULL;
+int read_cnt = 0;
 
 #define BDBM_ALIGN_UP(addr,size)        (((addr)+((size)-1))&(~((size)-1)))
 #define BDBM_ALIGN_DOWN(addr,size)      ((addr)&(~((size)-1)))
@@ -21,7 +22,7 @@ static void libftl_done (void* req)
 	bdbm_sema_unlock ((bdbm_sema_t*)blkio_req->user);
 }
 
-static int libftl_write (uint64_t boffset, uint64_t bsize, uint8_t* data)
+static int __libftl_write (uint64_t boffset, uint64_t bsize, uint8_t* data)
 {
 	uint32_t j = 0;
 	bdbm_blkio_req_t* blkio_req = 
@@ -53,6 +54,78 @@ static int libftl_write (uint64_t boffset, uint64_t bsize, uint8_t* data)
 	bdbm_free (blkio_req->user);
 
 	return bsize;
+}
+
+static int libftl_write (uint64_t boffset, uint64_t bsize, uint8_t* data)
+{
+	int64_t left = bsize;
+	int64_t ofs = 0;
+	uint8_t* ptr_data = data;
+	int max_length = 256*4096;
+
+	while (left > 0) {
+		int cur_length;
+
+		if (max_length < left) {
+			printf ("max_length: %d, left: %d\n", max_length, left);
+			cur_length = max_length;
+		} else
+			cur_length = left;
+
+		__libftl_write (boffset+ofs, cur_length, ptr_data);
+
+		left -= cur_length;
+		ofs += cur_length;
+		ptr_data += cur_length;
+	}
+
+	return bsize;
+}
+
+int libftl_trim (uint64_t boffset, uint64_t bsize)
+{
+	uint32_t j = 0;
+	bdbm_blkio_req_t* blkio_req = 
+		(bdbm_blkio_req_t*)bdbm_malloc (sizeof (bdbm_blkio_req_t));
+
+	if (boffset % (16*1024*1024) != 0) {
+		printf ("what???\n");
+		exit (-1);
+	}
+	bsize = (bsize / (16*1024*1024) + 1) * (16*1024*1024);
+
+	//printf ("offset=%u size=%u\n", boffset, bsize);
+
+	/* build blkio req */
+	blkio_req->bi_rw = REQTYPE_TRIM;
+	blkio_req->bi_offset = (boffset + 511) / 512;
+	blkio_req->bi_size = (bsize + 511) / 512;
+	blkio_req->bi_bvec_cnt = (bsize + 4095) / 4096;
+	blkio_req->cb_done = libftl_done;
+	blkio_req->user = (bdbm_sema_t*)bdbm_malloc (sizeof (bdbm_sema_t));
+	bdbm_sema_init ((bdbm_sema_t*)blkio_req->user);
+	/*
+	for (j = 0; j < blkio_req->bi_bvec_cnt; j++) {
+		uint32_t wsize = 4096;
+		blkio_req->bi_bvec_ptr[j] = (uint8_t*)bdbm_malloc (4096);
+		if (bsize < (j + 1) * 4096) wsize = bsize % 4096;
+	}
+	*/
+
+	/* send req to ftl */
+	bdbm_sema_lock ((bdbm_sema_t*)blkio_req->user);
+	_bdi->ptr_host_inf->make_req (_bdi, blkio_req);
+	bdbm_sema_lock ((bdbm_sema_t*)blkio_req->user);
+
+	/* copy read data to buffer */
+	/*
+	for (j = 0; j < blkio_req->bi_bvec_cnt; j++)
+		bdbm_free (blkio_req->bi_bvec_ptr[j]);
+	*/
+	bdbm_free (blkio_req->user);
+
+	return bsize;
+
 }
 
 #if 0
@@ -150,6 +223,7 @@ NoHostFs::~NoHostFs(){
 	//unlink("flash.db");
 
 #ifdef ENABLE_LIBFTL
+	printf ("# of reads: %d\n", read_cnt);
 	bdbm_drv_close (_bdi);
 	bdbm_dm_exit (_bdi);
 	bdbm_drv_destroy (_bdi);
@@ -453,8 +527,8 @@ long int NoHostFs::BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const c
 			wsizet = pwrite(flash_fd, entry->node->file_buf->buffer, page_unit , offset);
 			if(wsizet < 0){ std::cout << "write error\n"; return wsizet; }
 #ifdef ENABLE_LIBFTL
+			//printf ("pwrite-1: offset = %d, page_unit = %d\n", offset, page_unit);
 			libftl_write(offset, page_unit, (uint8_t*)entry->node->file_buf->buffer);
-			//printf ("pwrite: offset = %d, page_unit = %d\n", offset, page_unit);
 #endif
 			entry->w_offset += (off_t)wsizet;
 			entry->node->size += (uint64_t)wsizet;
@@ -471,8 +545,8 @@ long int NoHostFs::BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const c
 			wsizet= pwrite(flash_fd, entry->node->file_buf->buffer, page_unit , offset);
 			if(wsizet < 0){ std::cout << "write error\n"; return wsizet; }
 #ifdef ENABLE_LIBFTL
+			//printf ("pwrite-2: offset = %d, page_unit = %d\n", offset, page_unit);
 			libftl_write(offset, page_unit, (uint8_t*)entry->node->file_buf->buffer);
-			//printf ("pwrite: offset = %d, page_unit = %d\n", offset, page_unit);
 #endif
 			entry->w_offset += (off_t)wsizet;
 			entry->node->size += (uint64_t)wsizet;
@@ -486,8 +560,10 @@ long int NoHostFs::BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const c
 		wsizet = pwrite(flash_fd, buf, ((dsize/page_unit)*page_unit) , offset);
 		if(wsizet < 0){ std::cout << "write error\n"; return wsizet; }
 #ifdef ENABLE_LIBFTL
-		libftl_write(offset, page_unit, (uint8_t*)entry->node->file_buf->buffer);
-		//printf ("pwrite: offset = %d, page_unit = %d\n", offset, page_unit);
+		if (((dsize/page_unit)*page_unit) != 0) {
+			//printf ("pwrite-3: offset = %d, page_unit = %d\n", offset, ((dsize/page_unit)*page_unit));
+			libftl_write(offset, (dsize/page_unit)*page_unit, (uint8_t*)entry->node->file_buf->buffer);
+		}
 #endif
 		entry->w_offset += (off_t)wsizet;
 		finfo->size += (uint64_t)wsizet;
@@ -651,6 +727,8 @@ size_t NoHostFs::SequentialRead(int fd, char* buf, size_t size){
 	return sum;
 }
 
+extern int read_cnt;
+
 long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* buf, uint64_t dsize, uint64_t offset, size_t page_unit, bool ispread){
 	ssize_t rsize;
 	size_t bsize = entry->node->file_buf->b_size;
@@ -664,6 +742,7 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 		if(rsize < 0){ std::cout << "read error\n"; return rsize; }
 		if(!ispread) entry->r_offset += (off_t)rsize;
 #ifdef ENABLE_LIBFTL
+		read_cnt += (dsize+4095)/4096;
 		//printf ("pread: offset = %d, page_unit = %d\n", offset, dsize);
 #endif
 	}
@@ -673,6 +752,7 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 			if(rsize < 0){ std::cout << "read error\n"; return rsize; }
 			if(!ispread) entry->r_offset += (off_t)rsize;
 #ifdef ENABLE_LIBFTL
+			read_cnt += (dsize+4095)/4096;
 			//printf ("pread: offset = %d, page_unit = %d\n", offset, dsize);
 #endif
 		}
@@ -687,6 +767,7 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 			if(rsize < 0){ std::cout << "read error\n"; return rsize; }
 			if(!ispread) entry->r_offset += (off_t)((buf_start + buf_offset) - offset);
 #ifdef ENABLE_LIBFTL
+			read_cnt += (buf_start + buf_offset - offset + 4095)/4096;
 			//printf ("pread: offset = %d, page_unit = %d\n", offset, dsize);
 #endif
 			buf += rsize;
