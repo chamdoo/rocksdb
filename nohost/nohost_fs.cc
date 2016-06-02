@@ -737,40 +737,53 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 	size_t cur_start = finfo->start_address;
 	char* tbuf = entry->node->file_buf->buffer;
 
-	if(bsize == 0 || buf_start != cur_start){
-		rsize = pread(flash_fd, buf, dsize, offset);
+	/* preparing data read for page unit*/
+	size_t start_page = offset / page_unit;
+	size_t last_page = (offset + (dsize-1)) / page_unit;
+	size_t page_num = last_page - start_page + 1;
+	char* unit_buffer = NULL;
+	char* unit_buffer_i = NULL;
+
+	if(bsize == 0 || buf_start != cur_start
+			|| (dsize + offset < buf_start + buf_offset)){
+		unit_buffer = new char[page_num*page_unit];
+		unit_buffer_i = unit_buffer;
+		rsize = pread(flash_fd, unit_buffer_i, page_num*page_unit, start_page*page_unit);
 		if(rsize < 0){ std::cout << "read error\n"; return rsize; }
-		if(!ispread) entry->r_offset += (off_t)rsize;
 #ifdef ENABLE_LIBFTL
-		read_cnt += (dsize+4095)/4096;
+		//read_cnt += (dsize+4095)/4096;
 		//printf ("pread: offset = %d, page_unit = %d\n", offset, dsize);
 #endif
+		unit_buffer_i += (offset % page_unit);
+		memcpy(buf, unit_buffer_i, dsize);
+		delete [] unit_buffer;
+		if(!ispread) entry->r_offset += (off_t)dsize;
+		rsize = dsize;
 	}
 	else{
-		if(dsize + offset < buf_start + buf_offset){
-			rsize = pread(flash_fd, buf, dsize, offset);
-			if(rsize < 0){ std::cout << "read error\n"; return rsize; }
-			if(!ispread) entry->r_offset += (off_t)rsize;
-#ifdef ENABLE_LIBFTL
-			read_cnt += (dsize+4095)/4096;
-			//printf ("pread: offset = %d, page_unit = %d\n", offset, dsize);
-#endif
-		}
-		else if(offset >= buf_start + buf_offset){
+		if(offset >= buf_start + buf_offset){
 			tbuf += (offset - (buf_start + buf_offset));
 			memcpy(buf, tbuf, dsize);
 			if(!ispread) entry->r_offset += (off_t)dsize;
 			rsize = (off_t)dsize;
 		}
 		else{
-			rsize = pread(flash_fd, buf,((buf_start + buf_offset) - offset), offset);
+			unit_buffer = new char[(buf_start + buf_offset) - (start_page*page_unit)];
+			unit_buffer_i = unit_buffer;
+			rsize = pread(flash_fd, unit_buffer_i,((buf_start + buf_offset) - (start_page*page_unit)), start_page*page_unit);
 			if(rsize < 0){ std::cout << "read error\n"; return rsize; }
-			if(!ispread) entry->r_offset += (off_t)((buf_start + buf_offset) - offset);
 #ifdef ENABLE_LIBFTL
-			read_cnt += (buf_start + buf_offset - offset + 4095)/4096;
+            //read_cnt += (buf_start + buf_offset - offset + 4095)/4096;
 			//printf ("pread: offset = %d, page_unit = %d\n", offset, dsize);
 #endif
-			buf += rsize;
+
+			unit_buffer_i += (offset % page_unit);
+			memcpy(buf, unit_buffer_i, (buf_start + buf_offset) - offset);
+			if(!ispread) entry->r_offset += (off_t)((buf_start + buf_offset) - offset);
+			delete [] unit_buffer;
+			rsize = (buf_start + buf_offset) - offset;
+
+			buf += ((buf_start + buf_offset) - offset);
 			memcpy(buf, tbuf, (offset + dsize) - (buf_start + buf_offset));
 			if(!ispread) entry->r_offset += (off_t)((offset + dsize) - (buf_start + buf_offset));
 			rsize += (off_t)((offset + dsize) - (buf_start + buf_offset));
