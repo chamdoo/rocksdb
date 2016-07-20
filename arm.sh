@@ -6,8 +6,8 @@ if [ -z "$NDK" ]; then
 fi
 
 BASEDIR=$(cd $(dirname $0) ; pwd -P)
-TOOLCHAINDIR=$BASEDIR/../toolchain
-GFLAGSDIR=$BASEDIR/../gflags
+TOOLCHAINDIR=$BASEDIR/../toolchain-zynq
+GFLAGSDIR=$BASEDIR/../gflags-zynq
 
 # toolchain/gflags: outside rocksdb (due to "make clean" issue)
 
@@ -17,8 +17,8 @@ if [ ! -d $TOOLCHAINDIR ]; then
 fi
 
 if [ ! -d $GFLAGSDIR ]; then
-	(cd ..; git clone https://github.com/cwchung90/gflags; \
-	cd gflags; sh AndroidSetup.sh; cd build; make)
+	(cd ..; git clone https://github.com/cwchung90/gflags gflags-zynq; \
+	cd gflags-zynq; sh AndroidSetup.sh)
 fi
 
 # to support some STL functions which were not implemented in android-18 library
