@@ -5,7 +5,6 @@
 //#define ENABLE_DEBUG
 #define ENABLE_LIBFTL
 
-
 namespace rocksdb{
 
 #ifdef ENABLE_LIBFTL
@@ -16,7 +15,7 @@ int read_cnt = 0;
 #define BDBM_ALIGN_UP(addr,size)        (((addr)+((size)-1))&(~((size)-1)))
 #define BDBM_ALIGN_DOWN(addr,size)      ((addr)&(~((size)-1)))
 
-static void libftl_done (void* req)
+static void libftl_write_done (void* req)
 {
 	bdbm_blkio_req_t* blkio_req = (bdbm_blkio_req_t*)req;
 	bdbm_sema_unlock ((bdbm_sema_t*)blkio_req->user);
@@ -33,7 +32,7 @@ static int __libftl_write (uint64_t boffset, uint64_t bsize, uint8_t* data)
 	blkio_req->bi_offset = (boffset + 511) / 512;
 	blkio_req->bi_size = (bsize + 511) / 512;
 	blkio_req->bi_bvec_cnt = (bsize + 4095) / 4096;
-	blkio_req->cb_done = libftl_done;
+	blkio_req->cb_done = libftl_write_done;
 	blkio_req->user = (bdbm_sema_t*)bdbm_malloc (sizeof (bdbm_sema_t));
 	bdbm_sema_init ((bdbm_sema_t*)blkio_req->user);
 	for (j = 0; j < blkio_req->bi_bvec_cnt; j++) {
@@ -82,6 +81,92 @@ static int libftl_write (uint64_t boffset, uint64_t bsize, uint8_t* data)
 	return bsize;
 }
 
+static void libftl_read_done (void* req)
+{
+#if 0
+	uint32_t j = 0;
+	uint8_t* data = NULL;
+	bdbm_blkio_req_t* blkio_req = (bdbm_blkio_req_t*)req;
+
+	data = (uint8_t*)blkio_req->user2;
+
+	/* copy read data to buffer */
+	for (j = 0; j < blkio_req->bi_bvec_cnt; j++) {
+		uint32_t wsize = 4096;
+		//if (bsize < (j + 1) * 4096) wsize = bsize % 4096;
+		bdbm_memcpy (data + (j * 4096), blkio_req->bi_bvec_ptr[j], wsize);
+		bdbm_free (blkio_req->bi_bvec_ptr[j]);
+	}
+	bdbm_sema_unlock ((bdbm_sema_t*)blkio_req->user);
+	bdbm_free (blkio_req->user);
+#endif
+	bdbm_blkio_req_t* blkio_req = (bdbm_blkio_req_t*)req;
+	bdbm_sema_unlock ((bdbm_sema_t*)blkio_req->user);
+}
+
+static int __libftl_read (uint64_t boffset, uint64_t bsize, uint8_t* data)
+{
+	uint32_t j = 0;
+	uint64_t ret = 0;
+	bdbm_blkio_req_t* blkio_req = 
+		(bdbm_blkio_req_t*)bdbm_malloc (sizeof (bdbm_blkio_req_t));
+
+	/* build blkio req */
+	blkio_req->bi_rw = REQTYPE_READ;
+	blkio_req->bi_offset = (boffset + 511) / 512;
+	blkio_req->bi_size = (bsize + 511) / 512;
+	blkio_req->bi_bvec_cnt = (bsize + 4095) / 4096;
+	blkio_req->cb_done = libftl_read_done;
+	blkio_req->user = (bdbm_sema_t*)bdbm_malloc (sizeof (bdbm_sema_t));
+	blkio_req->user2 = data;
+	bdbm_sema_init ((bdbm_sema_t*)blkio_req->user);
+	for (j = 0; j < blkio_req->bi_bvec_cnt; j++)
+		blkio_req->bi_bvec_ptr[j] = (uint8_t*)bdbm_malloc (4096);
+
+	/* send req to ftl */
+	bdbm_sema_lock ((bdbm_sema_t*)blkio_req->user);
+	_bdi->ptr_host_inf->make_req (_bdi, blkio_req);
+	bdbm_sema_lock ((bdbm_sema_t*)blkio_req->user);
+
+	/* copy read data to buffer */
+	for (j = 0; j < blkio_req->bi_bvec_cnt; j++) {
+		uint32_t wsize = 4096;
+		if (bsize < (j + 1) * 4096) wsize = bsize % 4096;
+		//printf ("READ ==> bsize = %llu, wsize = %llu, j = %u\n", bsize, wsize, j);
+		bdbm_memcpy (data + (j * 4096), blkio_req->bi_bvec_ptr[j], wsize);
+		bdbm_free (blkio_req->bi_bvec_ptr[j]);
+	}
+	bdbm_free (blkio_req->user);
+
+	return bsize;
+}
+
+static int libftl_read (uint64_t boffset, uint64_t bsize, uint8_t* data)
+{
+	int64_t left = bsize;
+	int64_t ofs = 0;
+	uint8_t* ptr_data = data;
+	int max_length = 256*4096;
+
+	while (left > 0) {
+		int cur_length;
+
+		if (max_length < left) {
+			printf ("max_length: %d, left: %d\n", max_length, left);
+			cur_length = max_length;
+		} else
+			cur_length = left;
+
+		__libftl_read (boffset+ofs, cur_length, ptr_data);
+
+		left -= cur_length;
+		ofs += cur_length;
+		ptr_data += cur_length;
+	}
+
+	return bsize;
+}
+
 int libftl_trim (uint64_t boffset, uint64_t bsize)
 {
 	uint32_t j = 0;
@@ -101,7 +186,7 @@ int libftl_trim (uint64_t boffset, uint64_t bsize)
 	blkio_req->bi_offset = (boffset + 511) / 512;
 	blkio_req->bi_size = (bsize + 511) / 512;
 	blkio_req->bi_bvec_cnt = (bsize + 4095) / 4096;
-	blkio_req->cb_done = libftl_done;
+	blkio_req->cb_done = libftl_write_done;
 	blkio_req->user = (bdbm_sema_t*)bdbm_malloc (sizeof (bdbm_sema_t));
 	bdbm_sema_init ((bdbm_sema_t*)blkio_req->user);
 	/*
@@ -128,42 +213,6 @@ int libftl_trim (uint64_t boffset, uint64_t bsize)
 
 }
 
-#if 0
-static int libftl_read (uint64_t boffset, uint64_t bsize, uint8_t* data)
-{
-	uint32_t j = 0;
-	uint64_t ret = 0;
-	bdbm_blkio_req_t* blkio_req = 
-		(bdbm_blkio_req_t*)bdbm_malloc (sizeof (bdbm_blkio_req_t));
-
-	/* build blkio req */
-	blkio_req->bi_rw = REQTYPE_READ;
-	blkio_req->bi_offset = (boffset + 511) / 512;
-	blkio_req->bi_size = (bsize + 511) / 512;
-	blkio_req->bi_bvec_cnt = (bsize + 4095) / 4096;
-	blkio_req->cb_done = libftl_done;
-	blkio_req->user = (bdbm_sema_t*)bdbm_malloc (sizeof (bdbm_sema_t));
-	bdbm_sema_init ((bdbm_sema_t*)blkio_req->user);
-	for (j = 0; j < blkio_req->bi_bvec_cnt; j++)
-		blkio_req->bi_bvec_ptr[j] = (uint8_t*)bdbm_malloc (4096);
-
-	/* send req to ftl */
-	bdbm_sema_lock ((bdbm_sema_t*)blkio_req->user);
-	_bdi->ptr_host_inf->make_req (_bdi, blkio_req);
-	bdbm_sema_lock ((bdbm_sema_t*)blkio_req->user);
-
-	/* copy read data to buffer */
-	for (j = 0; j < blkio_req->bi_bvec_cnt; j++) {
-		uint32_t wsize = 4096;
-		if (bsize < (j + 1) * 4096) wsize = bsize % 4096;
-		bdbm_memcpy (data + (j * 4096), blkio_req->bi_bvec_ptr[j], wsize);
-		bdbm_free (blkio_req->bi_bvec_ptr[j]);
-	}
-	bdbm_free (blkio_req->user);
-
-	return bsize;
-}
-#endif
 #endif
 
 std::string RecoverName(std::string name){
@@ -751,6 +800,7 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 		rsize = pread(flash_fd, unit_buffer_i, page_num*page_unit, start_page*page_unit);
 		if(rsize < 0){ std::cout << "read error\n"; return rsize; }
 #ifdef ENABLE_LIBFTL
+		libftl_read (start_page*page_unit, page_num*page_unit, (uint8_t*)unit_buffer_i);
 		//read_cnt += (dsize+4095)/4096;
 		//printf ("pread: offset = %d, page_unit = %d\n", offset, dsize);
 #endif
@@ -773,6 +823,7 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 			rsize = pread(flash_fd, unit_buffer_i,((buf_start + buf_offset) - (start_page*page_unit)), start_page*page_unit);
 			if(rsize < 0){ std::cout << "read error\n"; return rsize; }
 #ifdef ENABLE_LIBFTL
+			libftl_read (start_page*page_unit, ((buf_start + buf_offset) - (start_page*page_unit)), (uint8_t*)unit_buffer_i);
             //read_cnt += (buf_start + buf_offset - offset + 4095)/4096;
 			//printf ("pread: offset = %d, page_unit = %d\n", offset, dsize);
 #endif

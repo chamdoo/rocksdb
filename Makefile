@@ -155,8 +155,8 @@ LIBFTL_INC += \
 	-D USE_NEW_RMW \
 
 #LDFLAGS += \
-	#../bdbm_drv/frontend/user/libftl.a \
-	#../bdbm_drv/devices/libramdrive/libramdrive.a \
+	../bdbm_drv/frontend/user/libftl.a \
+	../bdbm_drv/devices/libramdrive/libramdrive.a \
 
 
 CFLAGS += $(LIBFTL_INC) 

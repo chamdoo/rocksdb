@@ -16,7 +16,6 @@
 #define ENABLE_LIBFTL
 #ifdef ENABLE_LIBFTL
 
-extern "C" {
 #include "bdbm_drv.h"
 #include "umemory.h"
 #include "params.h"
@@ -25,7 +24,6 @@ extern "C" {
 #include "userio.h"
 #include "ufile.h"
 #include "devices.h"
-}
 
 extern bdbm_drv_info_t* _bdi;
 
