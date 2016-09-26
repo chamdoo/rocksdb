@@ -77,7 +77,9 @@ endif
 ifneq ($(DEBUG_LEVEL), 2)
 OPT += -O2 -fno-omit-frame-pointer
 ifneq ($(MACHINE),ppc64) # ppc64 doesn't support -momit-leaf-frame-pointer
+ifneq ($(MACHINE),arm) # ppc64 doesn't support -momit-leaf-frame-pointer
 OPT += -momit-leaf-frame-pointer
+endif
 endif
 endif
 
@@ -119,10 +121,12 @@ am__v_AR_ = $(am__v_AR_$(AM_DEFAULT_VERBOSITY))
 am__v_AR_0 = @echo "  AR      " $@;
 am__v_AR_1 =
 
-#AM_LINK = $(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS) $(COVERAGEFLAGS) #../bdbm_drv/frontend/user/libftl.a ../bdbm_drv/devices/libramdrive/libramdrive.a  
-AM_LINK = $(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS) $(COVERAGEFLAGS) ../bdbm_drv/frontend/user/libftl.a ../bdbm_drv/devices/libramdrive/libramdrive.a  
 
+#LIBFTL_LIB = ../bdbm_drv/frontend/user/libftl.a ../bdbm_drv/devices/libramdrive/libramdrive.a  
+LIBFTL_LIB = ../bdbm_drv/frontend/user/libftl.a ../bdbm_drv/devices/nohost/nohost.a
 
+AM_LINK = $(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS) $(COVERAGEFLAGS) $(LIBFTL_LIB)
+	 
 
 # detect what platform we're building on
 dummy := $(shell (export ROCKSDB_ROOT="$(CURDIR)"; "$(CURDIR)/build_tools/build_detect_platform" "$(CURDIR)/make_config.mk"))
@@ -153,11 +157,6 @@ LIBFTL_INC += \
 	-D CONFIG_ENABLE_DEBUG \
 	-D USE_PMU \
 	-D USE_NEW_RMW \
-
-#LDFLAGS += \
-	../bdbm_drv/frontend/user/libftl.a \
-	../bdbm_drv/devices/libramdrive/libramdrive.a \
-
 
 CFLAGS += $(LIBFTL_INC) 
 CXXFLAGS += $(LIBFTL_INC) 

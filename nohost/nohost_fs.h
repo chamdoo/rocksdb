@@ -63,7 +63,7 @@ public:
 	long int Read(int fd, char* buf, size_t size);
 	long int ReadHelper(int fd, char* buf, size_t size);
 	size_t SequentialRead(int fd, char* buf, size_t size);
-	long int Pread(int fd, char* buf, uint64_t size, uint64_t absolute_offset);
+	long int Pread(int fd, char* buf, size_t size, uint64_t absolute_offset);
 	long int BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const char* buf, uint64_t dsize, uint64_t offset, size_t page_unit);
 	long int BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* buf, uint64_t dsize, uint64_t offset, size_t page_unit, bool ispread);
 
