@@ -122,8 +122,28 @@ am__v_AR_0 = @echo "  AR      " $@;
 am__v_AR_1 =
 
 
+#------- NOHOST -------
+BOARD = zc706_ubuntu
+BOARDDIR = $(BOARD)/jni
+NOHOST_OBJS := \
+	$(PWD)/$(BOARDDIR)/FlashRequest.o \
+	$(PWD)/$(BOARDDIR)/FlashIndication.o \
+	$(PWD)/$(BOARDDIR)/GeneratedCppCallbacks.o \
+	$(PWD)/$(BOARDDIR)/MMURequest.o \
+	$(PWD)/$(BOARDDIR)/MMUIndication.o \
+	$(PWD)/$(BOARDDIR)/MemServerRequest.o \
+	$(PWD)/$(BOARDDIR)/MemServerIndication.o \
+	$(PWD)/connectal/cpp/portal.o \
+	$(PWD)/connectal/cpp/portalPrintf.o \
+	$(PWD)/connectal/cpp/transportHardware.o \
+	$(PWD)/connectal/cpp/poller.o \
+	$(PWD)/connectal/cpp/dmaManager.o \
+	$(PWD)/connectal/cpp/platformMemory.o \
+	$(PWD)/connectal/cpp/timer.o \
+
 #LIBFTL_LIB = ../bdbm_drv/frontend/user/libftl.a ../bdbm_drv/devices/libramdrive/libramdrive.a  
-LIBFTL_LIB = ../bdbm_drv/frontend/user/libftl.a ../bdbm_drv/devices/nohost/nohost.a
+#LIBFTL_LIB = ../bdbm_drv/frontend/user/libftl.a ../bdbm_drv/devices/libramdrive/libramdrive.a $(NOHOST_OBJS)
+LIBFTL_LIB = ../bdbm_drv/frontend/libmemio/libmemio.a
 
 AM_LINK = $(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS) $(COVERAGEFLAGS) $(LIBFTL_LIB)
 	 
@@ -144,7 +164,9 @@ endif
 
 # chamdoo
 OPT += -DROCKSDB_LITE
+
 LIBFTL_INC += \
+	-I../bdbm_drv/frontend/libmemio \
 	-I../bdbm_drv/frontend/nvme \
 	-I../bdbm_drv/ftl \
 	-I../bdbm_drv/include \
@@ -157,6 +179,12 @@ LIBFTL_INC += \
 	-D CONFIG_ENABLE_DEBUG \
 	-D USE_PMU \
 	-D USE_NEW_RMW \
+	-D ZYNQ=1 \
+	-I$(PWD)/connectal \
+	-I$(PWD)/connectal/cpp \
+	-I$(PWD)/$(BOARDDIR) \
+	-I$(PWD)/connectal/drivers/zynqportal \
+	-I$(PWD)/connectal/drivers/portalmem \
 
 CFLAGS += $(LIBFTL_INC) 
 CXXFLAGS += $(LIBFTL_INC) 
@@ -211,7 +239,8 @@ ifndef DISABLE_WARNING_AS_ERROR
 endif
 
 CFLAGS += $(WARNING_FLAGS) -I. -I./include $(PLATFORM_CCFLAGS) $(OPT)
-CXXFLAGS += $(WARNING_FLAGS) -I. -I./include $(PLATFORM_CXXFLAGS) $(OPT) -Woverloaded-virtual -Wnon-virtual-dtor -Wno-missing-field-initializers
+#CXXFLAGS += $(WARNING_FLAGS) -I. -I./include $(PLATFORM_CXXFLAGS) $(OPT) -Woverloaded-virtual -Wnon-virtual-dtor -Wno-missing-field-initializers
+CXXFLAGS += $(WARNING_FLAGS) -I. -I./include $(PLATFORM_CXXFLAGS) $(OPT) -Woverloaded-virtual -Wno-missing-field-initializers
 
 LDFLAGS += $(PLATFORM_LDFLAGS)
 

@@ -3,7 +3,9 @@
 
 #include <sstream>
 
+#include "libmemio.h"
 
+extern memio_t* mio;
 
 namespace rocksdb{
 
@@ -237,8 +239,6 @@ bool GlobalFileTableTree::RecursiveRemoveDir(Node* cur){
 }
 
 
-extern int libftl_trim (uint64_t boffset, uint64_t bsize);
-
 int GlobalFileTableTree::DeleteFile(std::string name){
 	std::vector<std::string> path_list = split(name, '*');
 	if(path_list.size() == 0){
@@ -273,9 +273,9 @@ int GlobalFileTableTree::DeleteFile(std::string name){
 						(int)(*iter)->file_info->at(i)->start_address,
 						(int)(*iter)->file_info->at(i)->size);
 					*/
-					libftl_trim (
-						(*iter)->file_info->at(i)->start_address,
-						(*iter)->file_info->at(i)->size);
+					//libftl_trim ((*iter)->file_info->at(i)->start_address, (*iter)->file_info->at(i)->size);
+					memio_trim (mio, (*iter)->file_info->at(i)->start_address/8192, (*iter)->file_info->at(i)->size);
+					memio_wait (mio);
 				}
 				//====================================================================
 			}
