@@ -35,7 +35,7 @@ public:
 	uint64_t start_address;
 	uint64_t offset;
 	FileBuffer(){
-		buffer = new char[4096];
+		buffer = new char[8192];
 		b_size = 0;
 		start_address = 0;
 		offset = 0;

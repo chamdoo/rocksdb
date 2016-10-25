@@ -15,7 +15,7 @@ std::string RecoverName(std::string name){
 	std::vector<std::string>::iterator iter = path_list.begin();
 	while(iter != path_list.end()){
 		if(iter->compare("") == 0){
-			path_list.erase(iter);
+			iter = path_list.erase(iter); // update iter
 			continue;
 		}
 		iter++;

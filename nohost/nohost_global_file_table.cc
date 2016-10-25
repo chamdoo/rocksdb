@@ -32,7 +32,7 @@ Node* GlobalFileTableTree::DirectoryTraverse(const std::string path, bool isCrea
 	std::vector<std::string>::iterator iter = path_list.begin();
 	while(iter != path_list.end()){
 		if(iter->compare("") == 0){
-			path_list.erase(iter);
+			iter = path_list.erase(iter); // iter has to be updated 
 			continue;
 		}
 		iter++;
@@ -207,8 +207,8 @@ int GlobalFileTableTree::DeleteDir(std::string name){
 	std::list<Node*>::iterator iter = curdir->children->begin();
 	while(iter != curdir->children->end()){
 		if((*iter)->name->compare(remove_dir_name) == 0){
-			delete (*iter);
 			curdir->children->erase(iter);
+			delete (*iter);
 			return 0;
 		}
 		iter++;
@@ -274,13 +274,20 @@ int GlobalFileTableTree::DeleteFile(std::string name){
 						(int)(*iter)->file_info->at(i)->size);
 					*/
 					//libftl_trim ((*iter)->file_info->at(i)->start_address, (*iter)->file_info->at(i)->size);
-					memio_trim (mio, (*iter)->file_info->at(i)->start_address/8192, (*iter)->file_info->at(i)->size);
+					uint64_t start_addr = (*iter)->file_info->at(i)->start_address;
+					uint64_t file_size = (*iter)->file_info->at(i)->size;
+					printf("[GlobalFileTableTree::DeleteFile] start_addr: %lld, LPA=start_addr/8192: %lld, size: %lld, size/128M: %lld\n", 
+							start_addr, start_addr/8192,file_size, file_size/(8192*(1<<14)));
+					memio_trim (mio, start_addr/8192, file_size);
 					memio_wait (mio);
+					printf("[GlobalFileTableTree::DeleteFile] Finished!\n"); 
 				}
 				//====================================================================
 			}
-			delete (*iter);
+
 			curdir->children->erase(iter);
+			delete (*iter);
+
 			return 0;
 		}
 		iter++;
