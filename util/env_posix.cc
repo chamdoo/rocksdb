@@ -1165,8 +1165,8 @@ PosixEnv::PosixEnv()
     thread_pools_[pool_id].SetHostEnv(this);
   }
   thread_status_updater_ = CreateThreadStatusUpdater();
-  nohost = new NoHostFs(1024*1024*16); // NOHOST
-  //nohost = new NoHostFs((1<<14)*8192); // NOHOST
+  //nohost = new NoHostFs(1024*1024*16); // NOHOST
+  nohost = new NoHostFs((1<<14)*8192); // NOHOST
 }
 
 void PosixEnv::Schedule(void (*function)(void* arg1), void* arg, Priority pri,
