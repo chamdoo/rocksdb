@@ -360,8 +360,6 @@ long int NoHostFs::BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const c
 			wsizet = pwrite(flash_fd, entry->node->file_buf->buffer, page_unit , offset);
 			if(wsizet < 0){ std::cout << "write error\n"; return wsizet; }
 #ifdef ENABLE_LIBFTL
-			printf ("pwrite-1: offset = %zd, page_unit = %zd\n", offset, page_unit);
-			//libftl_write(offset, page_unit, (uint8_t*)entry->node->file_buf->buffer);
 			memio_write (mio, offset/8192, page_unit, (uint8_t*)entry->node->file_buf->buffer);
 			memio_wait (mio);
 #endif
@@ -380,7 +378,6 @@ long int NoHostFs::BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const c
 			wsizet= pwrite(flash_fd, entry->node->file_buf->buffer, page_unit , offset);
 			if(wsizet < 0){ std::cout << "write error\n"; return wsizet; }
 #ifdef ENABLE_LIBFTL
-			printf ("pwrite-2: offset = %zd, page_unit = %zd\n", offset, page_unit);
 			memio_write (mio, offset/8192, page_unit, (uint8_t*)entry->node->file_buf->buffer);
 			memio_wait (mio);
 #endif
@@ -398,16 +395,17 @@ long int NoHostFs::BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const c
 		if(wsizet < 0){ std::cout << "write error\n"; return wsizet; }
 #ifdef ENABLE_LIBFTL
 		if (((dsize/page_unit)*page_unit) != 0) {
-			printf ("pwrite-3: offset = %zd, page_unit = %zd\n", offset, ((dsize/page_unit)*page_unit));
 			memio_write (mio, offset/8192, (dsize/page_unit)*page_unit, (uint8_t*)buf);
 			memio_wait (mio);
 		} else {
+			/*
 			uint8_t fuck_buf[8192];
 			memcpy (fuck_buf, buf, dsize);
 			printf ("FUCK YOU!!! -- %llu\n", dsize);
-			printf ("pwrite-3: offset = %zd, page_unit = %zd\n", offset, ((dsize/page_unit)*page_unit));
+			printf ("pwrite-3: offset = %llu, page_unit = %zd\n", offset, ((dsize/page_unit)*page_unit));
 			memio_write (mio, offset/8192, 8192, (uint8_t*)buf);
 			memio_wait (mio);
+			*/
 		}
 #endif
 		entry->w_offset += (off_t)wsizet;
@@ -596,8 +594,6 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 		rsize = pread(flash_fd, unit_buffer_i, page_num*page_unit, start_page*page_unit);
 		if(rsize < 0){ std::cout << "read error\n"; return rsize; }
 #ifdef ENABLE_LIBFTL
-		//libftl_read (start_page*page_unit, page_num*page_unit, (uint8_t*)unit_buffer_i);
-		printf ("pread-1: offset = %lld, page_unit = %lld\n", start_page*page_unit, page_num*page_unit);
 		memio_read (mio, start_page*page_unit/8192, page_num*page_unit, (uint8_t*)unit_buffer_i);
 		memio_wait (mio);
 #endif
@@ -622,30 +618,11 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 				((buf_start + buf_offset) - (start_page*page_unit)), 
 				start_page*page_unit);
 			if(rsize < 0){ std::cout << "read error\n"; return rsize; }
-			if ((start_page*page_unit/8192) == 32768) {
-				printf (" -- [From File] data[0] = %x data[1] = %x, ..., data[len-1] =%x\n",
-					((uint8_t*)unit_buffer_i)[0], 
-					((uint8_t*)unit_buffer_i)[1], 
-					((uint8_t*)unit_buffer_i)[((buf_start + buf_offset) - (start_page*page_unit)) -1]);
-			}
 
 #ifdef ENABLE_LIBFTL
-			//libftl_read (start_page*page_unit, ((buf_start + buf_offset) - (start_page*page_unit)), (uint8_t*)unit_buffer_i);
-			printf ("pread-2: offset = %zd, page_unit = %zd\n", 
-				start_page*page_unit, 
-				((buf_start + buf_offset) - (start_page*page_unit)));
-			memio_read (mio, 
-				start_page*page_unit/8192, 
-				((buf_start + buf_offset) - (start_page*page_unit)), (uint8_t*)unit_buffer_i);
+			memio_read (mio, start_page*page_unit/8192, ((buf_start + buf_offset) - (start_page*page_unit)), (uint8_t*)unit_buffer_i);
 			memio_wait (mio);
-			if ((start_page*page_unit/8192) == 32768) {
-				printf (" -- data[0] = %x data[1] = %x, ..., data[len-1] =%x\n",
-					((uint8_t*)unit_buffer_i)[0], 
-					((uint8_t*)unit_buffer_i)[1], 
-					((uint8_t*)unit_buffer_i)[((buf_start + buf_offset) - (start_page*page_unit)) -1]);
-			}
 #endif
-
 			unit_buffer_i += (offset % page_unit);
 			memcpy(buf, unit_buffer_i, (buf_start + buf_offset) - offset);
 			if(!ispread) entry->r_offset += (off_t)((buf_start + buf_offset) - offset);
