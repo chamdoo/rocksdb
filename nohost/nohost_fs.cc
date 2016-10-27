@@ -3,6 +3,7 @@
 #include <cassert>
 
 #define ENABLE_LIBFTL
+//#define ENABLE_FLASH_DB
 
 #include "libmemio.h"
 
@@ -45,7 +46,10 @@ NoHostFs::NoHostFs(size_t assign_size){
 	}
 #endif
 
+#ifdef ENABLE_FLASH_DB
 	flash_fd = open("flash.db", O_CREAT | O_RDWR | O_TRUNC, 0666);
+#endif
+
 	this->page_size = assign_size;
 }
 
@@ -55,8 +59,10 @@ NoHostFs::~NoHostFs(){
 		if(open_file_table->at(i) != NULL)
 			delete open_file_table->at(i);
 	}
+#ifdef ENABLE_FLASH_DB
 	close(flash_fd);
 	//unlink("flash.db");
+#endif
 
 #ifdef ENABLE_LIBFTL
 	memio_close (mio);
@@ -357,10 +363,13 @@ long int NoHostFs::BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const c
 		entry->node->file_buf->offset = offset - finfo->start_address;
 		wsize = dsize;
 		if(S == page_unit){
-			wsizet = pwrite(flash_fd, entry->node->file_buf->buffer, page_unit , offset);
-			if(wsizet < 0){ std::cout << "write error\n"; return wsizet; }
+			wsizet = page_unit; // write size
+#ifdef ENABLE_FLASH_DB
+			wsizet_p = pwrite(flash_fd, entry->node->file_buf->buffer, wsizet, offset);
+			if(wsizet_p < 0){ std::cout << "write error: errno " << errno << std::endl; return wsizet_p; }
+#endif
 #ifdef ENABLE_LIBFTL
-			memio_write (mio, offset/8192, page_unit, (uint8_t*)entry->node->file_buf->buffer);
+			memio_write (mio, offset/8192, wsizet, (uint8_t*)entry->node->file_buf->buffer);
 			memio_wait (mio);
 #endif
 			entry->w_offset += (off_t)wsizet;
@@ -375,10 +384,14 @@ long int NoHostFs::BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const c
 			tbuf += bsize;
 			memcpy(tbuf, buf, (page_unit - bsize));
 			wsize = (page_unit - bsize);
-			wsizet= pwrite(flash_fd, entry->node->file_buf->buffer, page_unit , offset);
-			if(wsizet < 0){ std::cout << "write error\n"; return wsizet; }
+
+			wsizet = page_unit; // write size
+#ifdef ENABLE_FLASH_DB
+			wsizet_p = pwrite(flash_fd, entry->node->file_buf->buffer, wsizet, offset);
+			if(wsizet_p < 0){ std::cout << "write error: errno " << errno << std::endl; return wsizet_p; }
+#endif
 #ifdef ENABLE_LIBFTL
-			memio_write (mio, offset/8192, page_unit, (uint8_t*)entry->node->file_buf->buffer);
+			memio_write (mio, offset/8192, wsizet, (uint8_t*)entry->node->file_buf->buffer);
 			memio_wait (mio);
 #endif
 			entry->w_offset += (off_t)wsizet;
@@ -391,11 +404,14 @@ long int NoHostFs::BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const c
 		}
 
 		//wsizet = pwrite(flash_fd, buf, dsize, offset);
-		wsizet = pwrite(flash_fd, buf, ((dsize/page_unit)*page_unit) , offset);
-		if(wsizet < 0){ std::cout << "write error\n"; return wsizet; }
+		wsizet = (dsize/page_unit)*page_unit; // write size
+#ifdef ENABLE_FLASH_DB
+		wsizet_p = pwrite(flash_fd, buf, wsizet, offset);
+		if(wsizet_p < 0){ std::cout << "write error: errno " << errno << std::endl; return wsizet_p; }
+#endif
 #ifdef ENABLE_LIBFTL
-		if (((dsize/page_unit)*page_unit) != 0) {
-			memio_write (mio, offset/8192, (dsize/page_unit)*page_unit, (uint8_t*)buf);
+		if (wsizet != 0) {
+			memio_write (mio, offset/8192, wsizet, (uint8_t*)buf);
 			memio_wait (mio);
 		} else {
 			/*
@@ -573,7 +589,7 @@ size_t NoHostFs::SequentialRead(int fd, char* buf, size_t size){
 extern int read_cnt;
 
 long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* buf, uint64_t dsize, uint64_t offset, size_t page_unit, bool ispread){
-	ssize_t rsize;
+	ssize_t rsize,rsizet;
 	size_t bsize = entry->node->file_buf->b_size;
 	size_t buf_start = entry->node->file_buf->start_address;
 	size_t buf_offset = entry->node->file_buf->offset;
@@ -591,10 +607,14 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 			|| (dsize + offset < buf_start + buf_offset)){
 		unit_buffer = new char[page_num*page_unit];
 		unit_buffer_i = unit_buffer;
-		rsize = pread(flash_fd, unit_buffer_i, page_num*page_unit, start_page*page_unit);
-		if(rsize < 0){ std::cout << "read error\n"; return rsize; }
+		
+		rsizet = page_num*page_unit; // read size
+#ifdef ENABLE_FLASH_DB
+		rsizet_p = pread(flash_fd, unit_buffer_i, rsizet, start_page*page_unit);
+		if(rsizet_p < 0){ std::cout << "read error: errno " << errno << std::endl; return rsizet_p; }
+#endif
 #ifdef ENABLE_LIBFTL
-		memio_read (mio, start_page*page_unit/8192, page_num*page_unit, (uint8_t*)unit_buffer_i);
+		memio_read (mio, start_page*page_unit/8192, rsizet, (uint8_t*)unit_buffer_i);
 		memio_wait (mio);
 #endif
 		unit_buffer_i += (offset % page_unit);
@@ -613,14 +633,14 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 		else{
 			unit_buffer = new char[(buf_start + buf_offset) - (start_page*page_unit)];
 			unit_buffer_i = unit_buffer;
-			rsize = pread(flash_fd, 
-				unit_buffer_i,
-				((buf_start + buf_offset) - (start_page*page_unit)), 
-				start_page*page_unit);
-			if(rsize < 0){ std::cout << "read error\n"; return rsize; }
 
+			rsizet = ((buf_start + buf_offset) - (start_page*page_unit)); // read size
+#ifdef ENABLE_FLASH_DB
+			rsizet_p = pread(flash_fd, unit_buffer_i, rsizet, start_page*page_unit);
+			if(rsizet_p < 0){ std::cout << "read error: errno " << errno << std::endl; return rsize_p; }
+#endif
 #ifdef ENABLE_LIBFTL
-			memio_read (mio, start_page*page_unit/8192, ((buf_start + buf_offset) - (start_page*page_unit)), (uint8_t*)unit_buffer_i);
+			memio_read (mio, start_page*page_unit/8192, rsizet, (uint8_t*)unit_buffer_i);
 			memio_wait (mio);
 #endif
 			unit_buffer_i += (offset % page_unit);
