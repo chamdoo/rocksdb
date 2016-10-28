@@ -15,6 +15,8 @@ uint64_t Node::GetSize(){
 		return size + file_buf->b_size;
 	}
 	else{
+		// is this correct implementation for directories?
+		// currently returns number of children
 		return children->size();
 	}
 }

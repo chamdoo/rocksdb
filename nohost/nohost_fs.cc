@@ -221,7 +221,7 @@ bool NoHostFs::DirExists(std::string name){
 	}
 	return true;
 }
-size_t NoHostFs::GetFileSize(std::string name){
+uint64_t NoHostFs::GetFileSize(std::string name){
 	name = RecoverName(name);
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::GetFileSize::name:%s\n", name.c_str());
