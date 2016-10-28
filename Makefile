@@ -77,7 +77,7 @@ endif
 ifneq ($(DEBUG_LEVEL), 2)
 OPT += -O2 -fno-omit-frame-pointer
 ifneq ($(MACHINE),ppc64) # ppc64 doesn't support -momit-leaf-frame-pointer
-ifneq ($(MACHINE),arm) # ppc64 doesn't support -momit-leaf-frame-pointer
+ifneq ($(MACHINE),arm) # arm doesn't support -momit-leaf-frame-pointer
 OPT += -momit-leaf-frame-pointer
 endif
 endif
@@ -287,7 +287,7 @@ VALGRIND_VER := $(join $(VALGRIND_VER),valgrind)
 VALGRIND_OPTS = --error-exitcode=$(VALGRIND_ERROR) --leak-check=full
 
 TESTS = \
-	db_test# \
+	db_test \
 	db_iter_test \
 	db_log_iter_test \
 	db_compaction_filter_test \
@@ -835,10 +835,10 @@ table_reader_bench: table/table_reader_bench.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK) $(pg)
 
 perf_context_test: db/perf_context_test.o $(LIBOBJECTS) $(TESTHARNESS)
-	$(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS)
+	$(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS) $(LIBFTL_LIB)
 
 prefix_test: db/prefix_test.o $(LIBOBJECTS) $(TESTHARNESS)
-	$(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS)
+	$(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS) $(LIBFTL_LIB)
 
 backupable_db_test: utilities/backupable/backupable_db_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)

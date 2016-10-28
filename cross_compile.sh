@@ -11,10 +11,11 @@ if [ ! -d $GFLAGSDIR ]; then
 fi
 
 # make it light version
-export EXTRA_CXXFLAGS="$EXTRA_CXXFLAGS -DROCKSDB_LITE"
+# export EXTRA_CXXFLAGS="$EXTRA_CXXFLAGS -DROCKSDB_LITE"
+export OPT+=" -DROCKSDB_LITE"
 
 # to support gflags
-export EXTRA_CXXFLAGS="$EXTRA_CXXFLAGS -DGFLAGS=google"
+export EXTRA_CXXFLAGS="$EXTRA_CXXFLAGS -DGFLAGS=google -I$GFLAGSDIR/build/include "
 export EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lgflags -L$GFLAGSDIR/build/lib "
 
 #gnueabi doesn't work due to GCC version
@@ -33,9 +34,9 @@ export EXTRA_LDFLAGS+=" -lstdc++ -lsupc++"
 
 
 # Set TARGET_OS manually
-export MACHINE="arm"
-export TARGET_OS="LinuxArm"
-export CROSS_COMPILE="true"
+export MACHINE="arm" # for Makefile
+export TARGET_OS="LinuxArm" # for build_detect_platform
+# export CROSS_COMPILE="true" # Not needed
 
 export CC="${HOST}-gcc"
 export CXX="${HOST}-g++"
@@ -53,4 +54,5 @@ export OBJDUMP="${HOST}-objdump"
 #PORTABLE=1 DEBUG_LEVEL=0 make static_lib -j8
 #PORTABLE=1 make db_test
 PORTABLE=1 make db_test -j8 V=1
+#PORTABLE=1 make db_test auto_roll_logger_test stringappend_test perf_context_test -j8
 #PORTABLE=1 DEBUG_LEVEL=0 make all -j8

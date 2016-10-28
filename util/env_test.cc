@@ -22,11 +22,11 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
 #endif
 
 #ifdef ROCKSDB_FALLOCATE_PRESENT
 #include <errno.h>
-#include <fcntl.h>
 #endif
 
 #include "rocksdb/env.h"
