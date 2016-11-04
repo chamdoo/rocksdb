@@ -9,6 +9,9 @@
 
 #ifdef ROCKSDB_LIB_IO_POSIX
 
+#include <iostream>
+using namespace std;
+
 #include "util/io_posix.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -36,6 +39,8 @@
 #include "util/sync_point.h"
 
 namespace rocksdb {
+
+port::Mutex mutex_nohost;
 
 // A wrapper for fadvise, if the platform doesn't support fadvise,
 // it will simply return Status::NotSupport.
@@ -283,6 +288,45 @@ size_t PosixHelper::GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
   return static_cast<size_t>(rid - id);
 }
 #endif
+
+/* NOHOST */
+size_t NoHostGetUniqueIdFromFile(int fd, char* id, size_t max_size, NoHostFs* nohost_, const string& filename_ ) {
+	// Only for NOHOST
+  if (max_size < kMaxVarint64Length * 3) {
+    return 0;
+  }
+
+  char* rid = id;
+  rid = EncodeVarint64(rid, nohost_->GetFileSize(filename_));
+  rid = EncodeVarint64(rid, nohost_->GetFileModificationTime(filename_));
+  
+  return static_cast<size_t>(rid - id);
+
+  /*
+  struct stat buf;
+  int result = fstat(fd, &buf);
+  assert(result != -1);
+  if (result == -1) {
+    return 0;
+  }
+
+  long version = 0;
+  result = ioctl(fd, FS_IOC_GETVERSION, &version);
+  TEST_SYNC_POINT_CALLBACK("GetUniqueIdFromFile:FS_IOC_GETVERSION", &result);
+  if (result == -1) {
+    return 0;
+  }
+  uint64_t uversion = (uint64_t)version;
+
+  char* rid = id;
+  rid = EncodeVarint64(rid, buf.st_dev);
+  rid = EncodeVarint64(rid, buf.st_ino);
+  rid = EncodeVarint64(rid, uversion);
+  assert(rid >= id);
+  return static_cast<size_t>(rid - id);
+  */
+}
+
 /*
  * PosixRandomAccessFile
  *
@@ -836,5 +880,219 @@ Status PosixDirectory::Fsync() {
   }
   return Status::OK();
 }
+
+
+/* NOHOST
+ * NoHostSequentialFile
+ */
+NoHostSequentialFile::NoHostSequentialFile(const std::string& fname, int fd,
+                                         const EnvOptions& options, NoHostFs* nohost) // NOHOST
+    : filename_(fname),
+      fd_(fd),
+      use_os_buffer_(options.use_os_buffer),
+	  nohost_(nohost){} // NOHOST
+
+NoHostSequentialFile::~NoHostSequentialFile() {
+    mutex_nohost.Lock();
+    nohost_->Close(fd_);
+    mutex_nohost.Unlock();
+} // NOHOST
+
+Status NoHostSequentialFile::Read(size_t n, Slice* result, char* scratch) {
+
+  // NOHOST
+  Status s;
+  size_t r = 0;
+
+  mutex_nohost.Lock();
+  r = nohost_->SequentialRead(fd_, scratch, n);
+  mutex_nohost.Unlock();
+
+  *result = Slice(scratch, r);
+  if (r < n) {
+    if (nohost_->IsEof(fd_)) {
+    	s = Status::OK();
+    } else {
+      s = IOError(filename_, errno);
+    }
+  }
+
+  // NOHOST
+
+  return s;
+}
+
+Status NoHostSequentialFile::Skip(uint64_t n) {
+	Status result;
+
+  // NOHOST
+  int value = 0;
+  if ((value = nohost_->Lseek(fd_, n)) < 0) {
+	  result = IOError(filename_, errno);
+	 //printf("NoHostSequentialFile::Skip:: result value is not same\n");
+  }
+  // NOHOST
+
+  return result;
+}
+Status NoHostSequentialFile::InvalidateCache(size_t offset, size_t length) { return Status::OK(); }
+
+
+/*
+ * NoHostRandomAccessFile
+ *
+ * pread() based random-access
+ */
+NoHostRandomAccessFile::NoHostRandomAccessFile(const std::string& fname, int fd,
+                                             const EnvOptions& options, NoHostFs* nohost)
+    : filename_(fname), fd_(fd), use_os_buffer_(options.use_os_buffer), nohost_(nohost) { // NOHOST
+}
+
+NoHostRandomAccessFile::~NoHostRandomAccessFile() {
+	mutex_nohost.Lock();
+    nohost_->Close(fd_);
+	mutex_nohost.Unlock();
+} // NOHOST
+
+Status NoHostRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
+                                   char* scratch) const {
+	  //printf("NoHostRandomAccessFile:Read(offset:%zu, size=%zu\n", offset, n);
+
+  // NOHOST
+  Status s;
+  ssize_t r = -1;
+  size_t left = n;
+  char* ptr = scratch;
+
+  if(scratch == NULL){
+	  //printf("NoHostRandomAccessFile: scratch is NULL@!!!!!\n");
+	  scratch = new char[n];
+	  ptr = scratch;
+  }
+  while (left > 0) {
+	  //printf("NoHostRandomAccessFile:Pread(offset:%zu, size=%zu\n", offset, left);
+	mutex_nohost.Lock();
+    r = nohost_->Pread(fd_, ptr, left, offset);
+    mutex_nohost.Unlock();
+    if (r <= 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      break;
+    }
+    ptr += r;
+    offset += r;
+    left -= r;
+  }
+  *result = Slice(scratch, (r < 0) ? 0 : n - left);
+  if (r < 0) {
+    // An error: return a non-ok status
+    s = IOError(filename_, errno);
+  }
+  //printf("NoHostRandomAccessFile:Pread(offset:%zu, size=%zu, %s\n", offset, n, result->data_);
+  // NOHOST
+/*  if(filename_.compare("/tmp/rocksdbtest-1000/db_test/000004.sst") == 0){
+	  int fd = open("004.sst.pread", O_CREAT|O_RDWR|O_APPEND, 0644);
+	  ssize_t size = write(fd, scratch, n - left);
+	  if(size != -1) close(fd);
+  }*/
+
+  return s;
+}
+
+#ifdef OS_LINUX
+size_t NoHostRandomAccessFile::GetUniqueId(char* id, size_t max_size) const {
+	  return NoHostGetUniqueIdFromFile(fd_, id, max_size, nohost_, filename_);
+}
+#endif
+
+void NoHostRandomAccessFile::Hint(AccessPattern pattern) {}
+Status NoHostRandomAccessFile::InvalidateCache(size_t offset, size_t length) { return Status::OK(); }
+
+
+
+/*
+ * NoHostWritableFile
+ *
+ * Use posix write to write data to a file.
+ */
+NoHostWritableFile::NoHostWritableFile(const std::string& fname, int fd,
+                                     const EnvOptions& options, NoHostFs* nohost, int pfd)
+    : filename_(fname), fd_(fd), filesize_(0), nohost_(nohost), pfd_(pfd) {
+}
+
+NoHostWritableFile::~NoHostWritableFile() {
+  if (fd_ >= 0) {
+    NoHostWritableFile::Close();
+  }
+}
+
+Status NoHostWritableFile::Append(const Slice& data) {
+	//printf("Enter the NoHostWritableFile::Append(string %s) data:%s\n", filename_.c_str(), data.data());
+
+/*	  if(filename_.compare("/tmp/rocksdbtest-1000/sst_files/file1.sst") == 0){
+		  int fd = open("004.sst", O_CREAT|O_RDWR|O_TRUNC, 0644);
+		  ssize_t size = write(fd, data.data(), data.size());
+		  if(size != -1) close(fd);
+	  }*/
+  // NOHOST
+  const char* src = data.data();
+  size_t left = data.size();
+  size_t sum = 0;
+  while (left != 0) {
+	mutex_nohost.Lock();
+    ssize_t done = nohost_->Write(fd_, src, left);
+    mutex_nohost.Unlock();
+    if (done < 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+      return IOError(filename_, errno);
+    }
+    left -= done;
+    src += done;
+    sum += done;
+  }
+  filesize_ += data.size();
+  // NOHOST
+	//printf("Exit the NoHostWritableFile::Append(string %s) data:%s\n", filename_.c_str(), data.data());
+  return Status::OK();
+}
+
+Status NoHostWritableFile::Close() {
+  Status s;
+  Status ns; // NOHOST
+
+  if (close(pfd_) < 0) {
+    s = IOError(filename_, errno);
+  }
+  pfd_ = -1;
+
+  // NOHOST
+  mutex_nohost.Lock();
+  if (nohost_->Close(fd_) < 0) {
+	ns = IOError(filename_, errno);
+  }
+  mutex_nohost.Unlock();
+  fd_ = -1;
+  // NOHOST
+
+  return ns;
+}
+
+
+// write out the cached data to the OS cache
+Status NoHostWritableFile::Flush() { return Status::OK(); }
+Status NoHostWritableFile::Sync() { return Status::OK(); }
+Status NoHostWritableFile::Fsync() { return Status::OK(); }
+bool NoHostWritableFile::IsSyncThreadSafe() const { return true; }
+uint64_t NoHostWritableFile::GetFileSize() { return filesize_; }
+Status NoHostWritableFile::InvalidateCache(size_t offset, size_t length) { return Status::OK(); }
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+Status NoHostWritableFile::Allocate(off_t offset, off_t len) { return Status::OK(); }
+Status NoHostWritableFile::RangeSync(off_t offset, off_t nbytes) { return Status::OK(); }
+size_t NoHostWritableFile::GetUniqueId(char* id, size_t max_size) const { return NoHostGetUniqueIdFromFile(fd_, id, max_size, nohost_, filename_); }
+#endif
+
 }  // namespace rocksdb
 #endif
