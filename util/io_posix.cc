@@ -1090,8 +1090,8 @@ bool NoHostWritableFile::IsSyncThreadSafe() const { return true; }
 uint64_t NoHostWritableFile::GetFileSize() { return filesize_; }
 Status NoHostWritableFile::InvalidateCache(size_t offset, size_t length) { return Status::OK(); }
 #ifdef ROCKSDB_FALLOCATE_PRESENT
-Status NoHostWritableFile::Allocate(off_t offset, off_t len) { return Status::OK(); }
-Status NoHostWritableFile::RangeSync(off_t offset, off_t nbytes) { return Status::OK(); }
+Status NoHostWritableFile::Allocate(uint64_t offset, uint64_t len) { return Status::OK(); }
+Status NoHostWritableFile::RangeSync(uint64_t offset, uint64_t nbytes) { return Status::OK(); }
 size_t NoHostWritableFile::GetUniqueId(char* id, size_t max_size) const { return NoHostGetUniqueIdFromFile(fd_, id, max_size, nohost_, filename_); }
 #endif
 

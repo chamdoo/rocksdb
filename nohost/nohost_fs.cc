@@ -2,7 +2,7 @@
 #include <string.h>
 #include <cassert>
 
-#define ENABLE_LIBFTL
+//#define ENABLE_LIBFTL
 #define ENABLE_FLASH_DB
 
 #include "libmemio.h"
@@ -622,14 +622,16 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 		
 		rsizet = page_num*page_unit; // read size
 #ifdef ENABLE_FLASH_DB
-		char* unit_buffer_fd = new char[page_num*page_unit];
-		ssize_t rsizet_p = pread64(flash_fd, unit_buffer_fd, rsizet, start_page*page_unit);
+		//char* unit_buffer_fd = new char[page_num*page_unit];
+		//ssize_t rsizet_p = pread64(flash_fd, unit_buffer_fd, rsizet, start_page*page_unit);
+		ssize_t rsizet_p = pread64(flash_fd, unit_buffer_i, rsizet, start_page*page_unit);
 		if(rsizet_p < 0){ std::cout << "read error: errno " << errno << std::endl; return rsizet_p; }
 #endif
 #ifdef ENABLE_LIBFTL
 		memio_read (mio, start_page*page_unit/8192, rsizet, (uint8_t*)unit_buffer_i);
 		memio_wait (mio);
 #endif
+#if 0
 #ifdef ENABLE_FLASH_DB
 		if (memcmp (unit_buffer_fd, unit_buffer_i, dsize) != 0) {
 			printf ("[1] %zd = %zd * %zd / 8192, size=%zd\n",  start_page*page_unit/8192, start_page, page_unit, rsizet);
@@ -651,6 +653,7 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 			fflush (stdout);
 		}
 		delete [] unit_buffer_fd;
+#endif
 #endif
 		unit_buffer_i += (offset % page_unit);
 		memcpy(buf, unit_buffer_i, dsize);
@@ -677,14 +680,16 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 
 			rsizet = ((buf_start + buf_offset) - (start_page*page_unit)); // read size
 #ifdef ENABLE_FLASH_DB
-			char* unit_buffer_fd = new char[(buf_start + buf_offset) - (start_page*page_unit)];
-			ssize_t rsizet_p = pread64(flash_fd, unit_buffer_fd, rsizet, start_page*page_unit);
+			//char* unit_buffer_fd = new char[(buf_start + buf_offset) - (start_page*page_unit)];
+			//ssize_t rsizet_p = pread64(flash_fd, unit_buffer_fd, rsizet, start_page*page_unit);
+			ssize_t rsizet_p = pread64(flash_fd, unit_buffer_i, rsizet, start_page*page_unit);
 			if(rsizet_p < 0){ std::cout << "read error: errno " << errno << std::endl; return rsizet_p; }
 #endif
 #ifdef ENABLE_LIBFTL
 			memio_read (mio, start_page*page_unit/8192, rsizet, (uint8_t*)unit_buffer_i);
 			memio_wait (mio);
 #endif
+#if 0
 #ifdef ENABLE_FLASH_DB
 			if (memcmp (unit_buffer_fd, unit_buffer_i, rsizet) != 0) {
 				printf ("[2] %zd = %zd * %zd / 8192, size = %zd",  start_page*page_unit/8192, start_page, page_unit, rsizet);
@@ -706,6 +711,7 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 				fflush (stdout);
 			}
 			delete [] unit_buffer_fd;
+#endif
 #endif
 			unit_buffer_i += (offset % page_unit);
 			memcpy(buf, unit_buffer_i, (buf_start + buf_offset) - offset);

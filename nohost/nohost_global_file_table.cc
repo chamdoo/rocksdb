@@ -276,6 +276,7 @@ int GlobalFileTableTree::DeleteFile(std::string name){
 						(int)(*iter)->file_info->at(i)->size);
 					*/
 					//libftl_trim ((*iter)->file_info->at(i)->start_address, (*iter)->file_info->at(i)->size);
+					
 					uint64_t start_addr = (*iter)->file_info->at(i)->start_address;
 					uint64_t file_size = (*iter)->file_info->at(i)->size;
 					uint64_t trim_size = 8192*(1<<14) * ( file_size/(8192*(1<<14)) + 1 ); // trim_size should be multiple of 128MB (segment size)
@@ -284,8 +285,10 @@ int GlobalFileTableTree::DeleteFile(std::string name){
 							LPA=start_addr/8192: %lld, size: %lld, size/128M: %lld, trim_size: %lld\n", 
 							start_addr, start_addr/8192,file_size, file_size/(8192*(1<<14)), trim_size);
 					*/
+#if 0
 					memio_trim (mio, start_addr/8192, trim_size);
 					memio_wait (mio);
+#endif
 				}
 				//====================================================================
 			}
