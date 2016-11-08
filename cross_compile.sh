@@ -23,7 +23,6 @@ export EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lgflags -L$GFLAGSDIR/build/lib "
 export HOST=arm-linux-gnueabihf
 
 # To solve problems with std::future
-# https://lists.debian.org/debian-arm/2013/12/msg00007.html
 # http://stackoverflow.com/questions/22036396/stdpromise-error-on-cross-compiling
 export EXTRA_CXXFLAGS+=" -Wno-maybe-uninitialized -Wno-conversion-null -Wno-format -Wno-error=format"
 export EXTRA_CXXFLAGS+=" -march=armv7-a -mtune=cortex-a9 -mfpu=neon"
@@ -48,6 +47,9 @@ export RANLIB="${HOST}-ranlib"
 export STRIP="${HOST}-strip"
 export OBJCOPY="${HOST}-objcopy"
 export OBJDUMP="${HOST}-objdump"
+
+export EXTRA_CXXFLAGS+=" -DENABLE_LIBFTL"
+export EXTRA_CXXFLAGS+=" -DENABLE_FLASH_DB"
 
 #PORTABLE=1 make shared_lib -j8
 #PORTABLE=1 make release -j8

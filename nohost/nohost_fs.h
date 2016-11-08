@@ -12,8 +12,6 @@
 
 #include "nohost_global_file_table.h"
 
-
-/*#define ENABLE_LIBFTL*/
 #ifdef ENABLE_LIBFTL
 
 #include "bdbm_drv.h"
