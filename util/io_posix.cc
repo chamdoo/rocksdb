@@ -988,6 +988,7 @@ Status NoHostRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
   if (r < 0) {
     // An error: return a non-ok status
     s = IOError(filename_, errno);
+	fprintf (stderr, "IOError (): %d\n", errno);
   }
   //printf("NoHostRandomAccessFile:Pread(offset:%zu, size=%zu, %s\n", offset, n, result->data_);
   // NOHOST

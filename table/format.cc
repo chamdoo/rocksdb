@@ -260,6 +260,7 @@ Status ReadBlock(RandomAccessFileReader* file, const Footer& footer,
 
   {
     PERF_TIMER_GUARD(block_read_time);
+	printf ("[ReadBlock] ");
     s = file->Read(handle.offset(), n + kBlockTrailerSize, contents, buf);
   }
 

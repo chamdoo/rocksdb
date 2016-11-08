@@ -1291,6 +1291,8 @@ TEST_F(DBTest, SparseMerge) {
     // Check that we do not do a compaction that merges all of B in one shot.
     const std::string value(1000, 'x');
     Put(1, "A", "va");
+	printf ("1: =================\n");
+	fflush (stdout);
     // Write approximately 100MB of "B" values
     for (int i = 0; i < 100000; i++) {
       char key[100];
@@ -1298,7 +1300,12 @@ TEST_F(DBTest, SparseMerge) {
       Put(1, key, value);
     }
     Put(1, "C", "vc");
+	printf ("2: =================\n");
+	fflush (stdout);
     ASSERT_OK(Flush(1));
+	fflush (stdout);
+	printf ("3: =================\n");
+	fflush (stdout);
     dbfull()->TEST_CompactRange(0, nullptr, nullptr, handles_[1]);
 
     // Make sparse update
