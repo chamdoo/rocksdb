@@ -1039,7 +1039,6 @@ Status NoHostWritableFile::Append(const Slice& data) {
   // NOHOST
   const char* src = data.data();
   size_t left = data.size();
-  size_t sum = 0;
   while (left != 0) {
 	mutex_nohost.Lock();
     ssize_t done = nohost_->Write(fd_, src, left);
@@ -1052,7 +1051,6 @@ Status NoHostWritableFile::Append(const Slice& data) {
     }
     left -= done;
     src += done;
-    sum += done;
   }
   filesize_ += data.size();
   // NOHOST

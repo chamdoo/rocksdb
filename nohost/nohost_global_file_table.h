@@ -11,7 +11,7 @@ namespace rocksdb{
 
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
 std::vector<std::string> split(const std::string &s, char delim);
-long int GetCurrentTime();
+time_t GetCurrentTime();
 
 class FileSegInfo{
 public:
@@ -84,7 +84,7 @@ public:
 	Node* parent;
 	std::string* name;
 	bool isfile;
-	long int last_modified_time;
+	time_t last_modified_time;
 	std::list<Node*>* children;
 	std::vector<FileSegInfo*>* file_info;
 	FileBuffer* file_buf;
@@ -137,8 +137,6 @@ public:
 private:
 	Node* root;
 	uint64_t page_size;
-
-
 };
 
 } // namespace rocksdb

@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# RocksDB for x86-Ubuntu depends on gflags, snappy, zlib, bzip2. 
+# gflags: sudo apt-get install libgflags-dev
+
+export OPT+=" -DROCKSDB_LITE"
+
+export EXTRA_CXXFLAGS+=" -DENABLE_FLASH_DB"
+#export EXTRA_CXXFLAGS+=" -DENABLE_READ_DEBUG"
+
+PORTABLE=1 make db_test -j8 V=1

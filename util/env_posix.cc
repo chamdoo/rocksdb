@@ -531,7 +531,9 @@ class PosixEnv : public Env {
 	/* NOHOST */
 	if(IsSstExtention(fname)){
 		mutex_nohost.Lock();
-		nohost->DeleteFile(fname);
+		if(nohost->DeleteFile(fname) != 0 ) {
+			result = IOError(fname, errno);
+		}
 		mutex_nohost.Unlock();
 	}
     return result;
@@ -592,7 +594,7 @@ class PosixEnv : public Env {
                                          uint64_t* file_mtime) override {
 	/* NOHOST */
 	if(IsSstExtention(fname)){
-		*file_mtime = nohost->GetFileModificationTime(fname);
+		*file_mtime = static_cast<uint64_t>(nohost->GetFileModificationTime(fname));
 	    return Status::OK();
 	}
     struct stat s;
@@ -607,13 +609,13 @@ class PosixEnv : public Env {
 	/* NOHOST */
 	Status result;
 	if(IsSstExtention(src)){
-		  mutex_nohost.Lock();
+		mutex_nohost.Lock();
 		if (nohost->Rename(src, target) != 0) {
-		  result = IOError(src, errno);
+			result = IOError(src, errno);
 		}
-		  mutex_nohost.Unlock();
-	   if (rename(src.c_str(), target.c_str()) != 0) {
-		  result = IOError(src, errno);
+		mutex_nohost.Unlock();
+		if (rename(src.c_str(), target.c_str()) != 0) {
+			result = IOError(src, errno);
 		}
 		return result;
 	}

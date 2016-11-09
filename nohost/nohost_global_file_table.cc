@@ -130,7 +130,7 @@ Node* GlobalFileTableTree::CreateFile(std::string name){
 Node* GlobalFileTableTree::Link(std::string src, std::string target){
 	std::vector<std::string> path_list = split(target, '*');
 	if(path_list.size() == 0){
-//		std::cout <<"A file must have a name."<<std::endl;
+		errno = ENOENT; // Error when a directory component of target or src does not exist
 		return NULL;
 	}
 
@@ -244,7 +244,7 @@ bool GlobalFileTableTree::RecursiveRemoveDir(Node* cur){
 int GlobalFileTableTree::DeleteFile(std::string name){
 	std::vector<std::string> path_list = split(name, '*');
 	if(path_list.size() == 0){
-//		std::cout <<"A file must have a name."<<std::endl;
+		errno = ENOENT; // Invalid path
 		return -1;
 	}
 	std::string remove_file_name = path_list.back();
@@ -252,7 +252,6 @@ int GlobalFileTableTree::DeleteFile(std::string name){
 	Node* curfile = DirectoryTraverse(name, false);
 	if(curfile == NULL){
 		errno = ENOENT; // No such file or directory
-//		std::cout << name <<" file doesn't exist."<<std::endl;
 		return -1;
 	}
 	if(!curfile->isfile){
@@ -386,11 +385,12 @@ std::vector<std::string> split(const std::string &s, char delim) {
     return elems;
 }
 
-long int GetCurrentTime(){
+time_t GetCurrentTime(){
 	struct timeval current;
 	gettimeofday(&current, NULL);
 
-	return (current.tv_sec * 1000000 + current.tv_usec);
+	//return (current.tv_sec * 1000000 + current.tv_usec);
+	return current.tv_sec;
 }
 
 }

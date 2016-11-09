@@ -75,9 +75,9 @@ public:
 	int CreateDir(std::string name);
 	bool DirExists(std::string name);
 	uint64_t GetFileSize(std::string name);
-	long int GetFileModificationTime(std::string name);
+	time_t GetFileModificationTime(std::string name);
 	bool Link(std::string src, std::string target);
-	bool IsEof(int dfd);
+	int IsEof(int dfd);
 	off_t Lseek(int fd, off_t n);
 	int Free(Node* node);
 	int Lock(std::string name, bool lock);

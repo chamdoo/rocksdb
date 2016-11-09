@@ -230,7 +230,7 @@ uint64_t NoHostFs::GetFileSize(std::string name){
 	}
 	return node->GetSize();
 }
-long int NoHostFs::GetFileModificationTime(std::string name){
+time_t NoHostFs::GetFileModificationTime(std::string name){
 	name = RecoverName(name);
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::GetFileModificationTime::name:%s\n", name.c_str());
@@ -253,23 +253,23 @@ bool NoHostFs::Link(std::string src, std::string target){
 	if(node == NULL) return false;
 	return true;
 }
-bool NoHostFs::IsEof(int fd){
+int NoHostFs::IsEof(int fd){
+	// this function should not fail and do not set errno (counter part of feof)
+	// If EOF, return non-zero / else return zero
 	if(fd < 0 || (int)open_file_table->size() <= fd){
-		errno = EBADF; // Bad file number
-		return -1;
+		return 0;
 	}
 	OpenFileEntry* entry = open_file_table->at(fd);
 	if(entry == NULL){
-		errno = EBADF; // Bad file number
-		return false;
+		return 0;
 	}
 #ifdef ENABLE_DEBUG
 	printf("NoHostFs::IsEof::fd:%s\n", entry->node->name->c_str());
 #endif
 	if((size_t)(entry->r_offset) == entry->node->GetSize())
-		return true;
+		return 1;
 	else
-		return false;
+		return 0;
 }
 off_t NoHostFs::Lseek(int fd, off_t n){
 	if(fd < 0 || (int)open_file_table->size() <= fd){
@@ -614,9 +614,11 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 		unit_buffer = new char[page_num*page_unit];
 		unit_buffer_i = unit_buffer;
 
+#if defined(ENABLE_DEBUG_READ)
 		printf ("[CASE1] sp: %d lp: %d offset: %llu dsize: %llu\n", 
 			start_page, last_page, offset, dsize);
-		
+#endif
+
 		rsizet = page_num*page_unit; // read size
 #if defined(ENABLE_FLASH_DB) && defined(ENABLE_LIBFTL)
 		char* unit_buffer_fd = new char[page_num*page_unit];
@@ -657,8 +659,10 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 	}
 	else{
 		if(offset >= buf_start + buf_offset){
+#if defined(ENABLE_DEBUG_READ)
 			printf ("[CASE2] sp: %d lp: %d offset: %llu dsize: %llu\n", 
 					start_page, last_page, offset, dsize);
+#endif
 
 			tbuf += (offset - (buf_start + buf_offset));
 			memcpy(buf, tbuf, dsize);
@@ -666,8 +670,10 @@ long int NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* bu
 			rsize = (off_t)dsize;
 		}
 		else{
+#if defined(ENABLE_DEBUG_READ)
 			printf ("[CASE3] sp: %d lp: %d offset: %llu dsize: %llu\n", 
 					start_page, last_page, offset, dsize);
+#endif
 
 			unit_buffer = new char[(buf_start + buf_offset) - (start_page*page_unit)];
 			unit_buffer_i = unit_buffer;
