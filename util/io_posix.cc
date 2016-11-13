@@ -1003,7 +1003,21 @@ Status NoHostRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
 
 #ifdef OS_LINUX
 size_t NoHostRandomAccessFile::GetUniqueId(char* id, size_t max_size) const {
-	  return NoHostGetUniqueIdFromFile(fd_, id, max_size, nohost_, filename_);
+	  //return NoHostGetUniqueIdFromFile(fd_, id, max_size, nohost_, filename_);
+	  int pfd_;
+	  {
+		  IOSTATS_TIMER_GUARD(open_nanos);
+		  pfd_ = open(filename_.c_str(), O_RDONLY);
+	  }
+
+	  if (pfd_ < 0) {
+		  return 0;
+	  }
+
+	  size_t ret = PosixHelper::GetUniqueIdFromFile(pfd_, id, max_size);
+	  close(pfd_);
+
+	  return ret; 
 }
 #endif
 
@@ -1090,7 +1104,10 @@ Status NoHostWritableFile::InvalidateCache(size_t offset, size_t length) { retur
 #ifdef ROCKSDB_FALLOCATE_PRESENT
 Status NoHostWritableFile::Allocate(uint64_t offset, uint64_t len) { return Status::OK(); }
 Status NoHostWritableFile::RangeSync(uint64_t offset, uint64_t nbytes) { return Status::OK(); }
-size_t NoHostWritableFile::GetUniqueId(char* id, size_t max_size) const { return NoHostGetUniqueIdFromFile(fd_, id, max_size, nohost_, filename_); }
+size_t NoHostWritableFile::GetUniqueId(char* id, size_t max_size) const {
+	//return NoHostGetUniqueIdFromFile(fd_, id, max_size, nohost_, filename_);
+	return PosixHelper::GetUniqueIdFromFile(pfd_, id, max_size);
+}
 #endif
 
 }  // namespace rocksdb
