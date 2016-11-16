@@ -47,43 +47,42 @@ class NoHostFs{
 private:
 	std::vector<OpenFileEntry*>* open_file_table;
 	int flash_fd;
-	size_t page_size;
+	uint64_t segment_size;
+	uint64_t GetFreeBlockAddress();
 
 public:
 	GlobalFileTableTree* global_file_tree; // it must be private!!!!
 
-	NoHostFs(size_t assign_size);
+	NoHostFs(uint64_t assign_size);
 	~NoHostFs();
-	size_t GetFreeBlockAddress();
 	int Open(std::string name, char type);
-	long int Write(int fd, const char* buf, size_t size);
-	long int Write(int fd, char* buf, size_t size);
-	long int Read(int fd, char* buf, size_t size);
-	long int ReadHelper(int fd, char* buf, size_t size);
+//	ssize_t Write(int fd, const char* buf, size_t size);
+	ssize_t Write(int fd, const char* buf, size_t size);
+//	long int Read(int fd, char* buf, size_t size);
+	ssize_t ReadHelper(int fd, char* buf, size_t size);
 	size_t SequentialRead(int fd, char* buf, size_t size);
-	long int Pread(int fd, char* buf, size_t size, uint64_t absolute_offset);
-	long int BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const char* buf, uint64_t dsize, uint64_t offset, size_t page_unit);
-	long int BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* buf, uint64_t dsize, uint64_t offset, size_t page_unit, bool ispread);
+	ssize_t Pread(int fd, char* buf, size_t size, uint64_t absolute_offset);
+	ssize_t BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const char* buf, uint64_t dsize, uint64_t offset, size_t page_unit);
+	ssize_t BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* buf, uint64_t dsize, uint64_t offset, size_t page_unit, bool ispread);
 
 	int Close(int fd);
 	int Rename(std::string old_name, std::string name);
-	int Access(std::string name);
-	Node* ReadDir(int fd);
+//	int Access(std::string name);
+//	Node* ReadDir(int fd);
 	int DeleteFile(std::string name);
-	int DeleteDir(std::string name);
-	int CreateFile(std::string name);
-	int CreateDir(std::string name);
-	bool DirExists(std::string name);
+//	int DeleteDir(std::string name);
+//	int CreateFile(std::string name);
+//	int CreateDir(std::string name);
+//	bool DirExists(std::string name);
 	uint64_t GetFileSize(std::string name);
 	time_t GetFileModificationTime(std::string name);
-	bool Link(std::string src, std::string target);
+	int Link(std::string src, std::string target);
 	int IsEof(int dfd);
 	off_t Lseek(int fd, off_t n);
 	int Free(Node* node);
-	int Lock(std::string name, bool lock);
+//	int Lock(std::string name, bool lock);
 	std::string GetAbsolutePath();
     int  GetFd();
-
 };
 
 

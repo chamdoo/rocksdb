@@ -18,11 +18,12 @@ public:
 	uint64_t start_address;
 	uint64_t size;
 	int link_count;
-	FileSegInfo(size_t start_address_, uint64_t size_){
+	FileSegInfo(uint64_t start_address_, uint64_t size_) {
 		this->start_address =start_address_;
 		this->size =size_;
 		link_count = 1;
 	}
+
 	uint64_t GetStartAddress(){
 		return start_address;
 	}
@@ -98,7 +99,7 @@ class GlobalFileTableTree{
 public:
 	std::vector<unsigned char>* free_page_bitmap; // until now, it associates a char with a page
 
-	GlobalFileTableTree(size_t page_size_){
+	GlobalFileTableTree(uint64_t page_size_){
 		free_page_bitmap = new std::vector<unsigned char>();
 		free_page_bitmap->push_back(0);
 		root = new Node(new std::string(""), false, NULL);
@@ -118,7 +119,7 @@ public:
 
 	Node* CreateDir(std::string name);
 	Node* CreateFile(std::string name);
-	Node* Link(std::string src, std::string target);
+	int Link(std::string src, std::string target);
 	int DeleteDir(std::string name);
 	int DeleteFile(std::string name);
 	int Lock(std::string name, bool lock);

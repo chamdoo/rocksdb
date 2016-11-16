@@ -127,11 +127,14 @@ Node* GlobalFileTableTree::CreateFile(std::string name){
 	return newfile;
 }
 
-Node* GlobalFileTableTree::Link(std::string src, std::string target){
+int GlobalFileTableTree::Link(std::string src, std::string target){
+// On success, return 0
+// On failure, return -1 with errno
+
 	std::vector<std::string> path_list = split(target, '*');
 	if(path_list.size() == 0){
 		errno = ENOENT; // Error when a directory component of target or src does not exist
-		return NULL;
+		return -1;
 	}
 
 	std::string new_file_name = path_list.back();
@@ -139,13 +142,13 @@ Node* GlobalFileTableTree::Link(std::string src, std::string target){
 	Node* targetnode = GetNode(target);
 	if(targetnode != NULL){
 		errno = EEXIST; // File already exists
-		return NULL;
+		return -1;
 	}
 
 	Node* srcnode = GetNode(src);
 	if(srcnode == NULL){
 		errno = ENOENT; // No such file or directory
-		return NULL;
+		return -1;
 	}
 
 	if(srcnode->isfile){
@@ -167,8 +170,7 @@ Node* GlobalFileTableTree::Link(std::string src, std::string target){
 		targetnode->last_modified_time = srcnode->last_modified_time;
 	}
 
-
-	return targetnode;
+	return 0;
 }
 
 int GlobalFileTableTree::DeleteDir(std::string name){
@@ -242,6 +244,9 @@ bool GlobalFileTableTree::RecursiveRemoveDir(Node* cur){
 
 
 int GlobalFileTableTree::DeleteFile(std::string name){
+// On success, return 0
+// On failure, return -1 with errno
+
 	std::vector<std::string> path_list = split(name, '*');
 	if(path_list.size() == 0){
 		errno = ENOENT; // Invalid path
@@ -295,6 +300,7 @@ int GlobalFileTableTree::DeleteFile(std::string name){
 
 	return -1;
 }
+
 int GlobalFileTableTree::Lock(std::string name, bool lock){
 	Node* node = NULL;
 	if( (node = DirectoryTraverse(name, false)) == NULL){

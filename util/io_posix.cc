@@ -923,18 +923,13 @@ Status NoHostSequentialFile::Read(size_t n, Slice* result, char* scratch) {
 }
 
 Status NoHostSequentialFile::Skip(uint64_t n) {
-	Status result;
-
   // NOHOST
-  int value = 0;
-  if ((value = nohost_->Lseek(fd_, n)) < 0) {
-	  result = IOError(filename_, errno);
-	 //printf("NoHostSequentialFile::Skip:: result value is not same\n");
+  if (nohost_->Lseek(fd_, static_cast<off_t>(n)) < 0) {
+	  return IOError(filename_, errno);
   }
-  // NOHOST
-
-  return result;
+  return Status::OK();
 }
+
 Status NoHostSequentialFile::InvalidateCache(size_t offset, size_t length) { return Status::OK(); }
 
 
@@ -964,11 +959,11 @@ Status NoHostRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
   size_t left = n;
   char* ptr = scratch;
 
-  if(scratch == NULL){
-	  //printf("NoHostRandomAccessFile: scratch is NULL@!!!!!\n");
-	  scratch = new char[n];
-	  ptr = scratch;
-  }
+//  if(scratch == NULL){
+//	  //printf("NoHostRandomAccessFile: scratch is NULL@!!!!!\n");
+//	  scratch = new char[n];
+//	  ptr = scratch;
+//  }
   while (left > 0) {
 	  //printf("NoHostRandomAccessFile:Pread(offset:%zu, size=%zu\n", offset, left);
 	mutex_nohost.Lock();
@@ -984,6 +979,7 @@ Status NoHostRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
     offset += r;
     left -= r;
   }
+  
   *result = Slice(scratch, (r < 0) ? 0 : n - left);
   if (r < 0) {
     // An error: return a non-ok status

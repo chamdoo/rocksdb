@@ -627,19 +627,24 @@ class PosixEnv : public Env {
 
   virtual Status LinkFile(const std::string& src,
                           const std::string& target) override {
+    Status result;
+
 	/* NOHOST */
 	if(IsSstExtention(src)){
 		mutex_nohost.Lock();
-		nohost->Link(src, target);
+		if (nohost->Link(src, target) != 0) {
+			result = IOError(src, errno);
+		}
 		mutex_nohost.Unlock();
 	}
-    Status result;
+
     if (link(src.c_str(), target.c_str()) != 0) {
       if (errno == EXDEV) {
         return Status::NotSupported("No cross FS links allowed");
       }
       result = IOError(src, errno);
     }
+
     return result;
   }
 
