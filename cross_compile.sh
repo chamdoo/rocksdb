@@ -50,8 +50,8 @@ export STRIP="${HOST}-strip"
 export OBJCOPY="${HOST}-objcopy"
 export OBJDUMP="${HOST}-objdump"
 
-#export EXTRA_CXXFLAGS+=" -DENABLE_LIBFTL"
-export EXTRA_CXXFLAGS+=" -DENABLE_FLASH_DB"
+export EXTRA_CXXFLAGS+=" -DENABLE_LIBFTL"
+#export EXTRA_CXXFLAGS+=" -DENABLE_FLASH_DB"
 #export EXTRA_CXXFLAGS+=" -DENABLE_READ_DEBUG"
 
 #PORTABLE=1 make shared_lib -j8
