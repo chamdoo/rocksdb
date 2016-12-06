@@ -1,4 +1,4 @@
-# Copyright (c) 2011 The LevelDB Authors. All rights reserved.
+# Copyright (c) 2011 The LevelDB Authors. Aerved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file. See the AUTHORS file for names of contributors.
 
@@ -275,6 +275,9 @@ util/build_version.cc: FORCE
 
 LIBOBJECTS = $(LIB_SOURCES:.cc=.o)
 LIBOBJECTS += $(TOOL_SOURCES:.cc=.o)
+# chamdoo
+LIBOBJECTS += $(LIBFTL_LIB) 
+# end
 MOCKOBJECTS = $(MOCK_SOURCES:.cc=.o)
 
 
@@ -458,11 +461,11 @@ endif  # PLATFORM_SHARED_EXT
 	analyze tools
 
 
-all: $(LIBRARY) $(BENCHMARKS) tools $(TESTS)
+all: $(LIBRARY) $(BENCHMARKS) tools $(TESTS) 
 
-static_lib: $(LIBRARY)
+static_lib: $(LIBRARY) $(LIBFTL_LIB)
 
-shared_lib: $(SHARED)
+shared_lib: $(SHARED) $(LIBFTL_LIB)
 
 tools: $(TOOLS)
 
