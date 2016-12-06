@@ -283,6 +283,9 @@ util/build_version.cc: FORCE
 
 LIBOBJECTS = $(LIB_SOURCES:.cc=.o)
 LIBOBJECTS += $(TOOL_LIB_SOURCES:.cc=.o)
+# chamdoo
+LIBOBJECTS += $(LIBFTL_LIB) 
+# end
 MOCKOBJECTS = $(MOCK_LIB_SOURCES:.cc=.o)
 
 GTEST = $(GTEST_DIR)/gtest/gtest-all.o
