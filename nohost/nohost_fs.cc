@@ -399,7 +399,7 @@ ssize_t NoHostFs::BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const ch
 #endif
 #ifdef ENABLE_LIBFTL
 			memio_write (mio, offset/8192, static_cast<uint64_t>(wsizet), reinterpret_cast<uint8_t*>(entry->node->file_buf->buffer));
-			memio_wait (mio);
+//			memio_wait (mio);
 #endif
 			entry->w_offset += static_cast<off_t>(wsizet);
 			entry->node->size += static_cast<uint64_t>(wsizet);
@@ -427,7 +427,7 @@ ssize_t NoHostFs::BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const ch
 #endif
 #ifdef ENABLE_LIBFTL
 			memio_write (mio, offset/8192, static_cast<uint64_t>(wsizet), reinterpret_cast<uint8_t*>(entry->node->file_buf->buffer));
-			memio_wait (mio);
+//			memio_wait (mio);
 #endif
 			entry->w_offset += static_cast<off_t>(wsizet);
 			entry->node->size += static_cast<uint64_t>(wsizet);
@@ -453,7 +453,7 @@ ssize_t NoHostFs::BufferWrite(OpenFileEntry* entry, FileSegInfo* finfo, const ch
 #ifdef ENABLE_LIBFTL
 		if (wsizet != 0) {
 			memio_write (mio, offset/8192, static_cast<uint64_t>(wsizet), const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(buf)));
-			memio_wait (mio);
+//			memio_wait (mio);
 		} else {
 			/*
 			uint8_t fuck_buf[8192];
@@ -651,7 +651,7 @@ ssize_t NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* buf
 
 #if defined(ENABLE_LIBFTL)
 		memio_read (mio, start_page*page_unit/8192, static_cast<uint64_t>(rsizet), reinterpret_cast<uint8_t*>(unit_buffer_i));
-		memio_wait (mio);
+//		memio_wait (mio);
 #endif
 
 #if defined(ENABLE_FLASH_DB) && defined(ENABLE_LIBFTL)
@@ -710,7 +710,7 @@ ssize_t NoHostFs::BufferRead(OpenFileEntry* entry, FileSegInfo* finfo, char* buf
 
 #if defined(ENABLE_LIBFTL)
 			memio_read (mio, start_page*page_unit/8192, static_cast<uint64_t>(rsizet), reinterpret_cast<uint8_t*>(unit_buffer_i));
-			memio_wait (mio);
+//			memio_wait (mio);
 #endif
 
 #if defined(ENABLE_FLASH_DB) && defined(ENABLE_LIBFTL)
