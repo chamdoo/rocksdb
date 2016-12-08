@@ -39,8 +39,9 @@ using namespace std;
 #include "util/sync_point.h"
 
 namespace rocksdb {
-
+#if defined(NOHOST)
 port::Mutex mutex_nohost;
+#endif
 
 // A wrapper for fadvise, if the platform doesn't support fadvise,
 // it will simply return Status::NotSupport.
@@ -289,7 +290,7 @@ size_t PosixHelper::GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
 }
 #endif
 
-/* NOHOST */
+#if defined(NOHOST)
 size_t NoHostGetUniqueIdFromFile(int fd, char* id, size_t max_size, NoHostFs* nohost_, const string& filename_ ) {
 	// Only for NOHOST
   if (max_size < kMaxVarint64Length * 3) {
@@ -301,31 +302,8 @@ size_t NoHostGetUniqueIdFromFile(int fd, char* id, size_t max_size, NoHostFs* no
   rid = EncodeVarint64(rid, nohost_->GetFileModificationTime(filename_));
   
   return static_cast<size_t>(rid - id);
-
-  /*
-  struct stat buf;
-  int result = fstat(fd, &buf);
-  assert(result != -1);
-  if (result == -1) {
-    return 0;
-  }
-
-  long version = 0;
-  result = ioctl(fd, FS_IOC_GETVERSION, &version);
-  TEST_SYNC_POINT_CALLBACK("GetUniqueIdFromFile:FS_IOC_GETVERSION", &result);
-  if (result == -1) {
-    return 0;
-  }
-  uint64_t uversion = (uint64_t)version;
-
-  char* rid = id;
-  rid = EncodeVarint64(rid, buf.st_dev);
-  rid = EncodeVarint64(rid, buf.st_ino);
-  rid = EncodeVarint64(rid, uversion);
-  assert(rid >= id);
-  return static_cast<size_t>(rid - id);
-  */
 }
+#endif //NOHOST
 
 /*
  * PosixRandomAccessFile
@@ -881,7 +859,7 @@ Status PosixDirectory::Fsync() {
   return Status::OK();
 }
 
-
+#if defined(NOHOST)
 /* NOHOST
  * NoHostSequentialFile
  */
@@ -1105,6 +1083,6 @@ size_t NoHostWritableFile::GetUniqueId(char* id, size_t max_size) const {
 	return PosixHelper::GetUniqueIdFromFile(pfd_, id, max_size);
 }
 #endif
-
+#endif //NOHOST
 }  // namespace rocksdb
 #endif

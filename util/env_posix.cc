@@ -51,7 +51,10 @@
 #include "util/sync_point.h"
 #include "util/thread_local.h"
 #include "util/thread_status_updater.h"
-#include <sys/syscall.h> // NOHOST
+
+#if defined(NOHOST)
+//#include <sys/syscall.h>
+#endif
 
 #if !defined(TMPFS_MAGIC)
 #define TMPFS_MAGIC 0x01021994
@@ -65,6 +68,7 @@
 
 namespace rocksdb {
 
+#if defined(NOHOST)
 extern std::vector<std::string> split(const std::string &s, char delim);
 bool IsSstExtention(std::string name){
 	std::vector<std::string> list = split(name, '.');
@@ -75,7 +79,7 @@ bool IsSstExtention(std::string name){
 }
 
 extern port::Mutex mutex_nohost;
-
+#endif
 namespace {
 
 ThreadStatusUpdater* CreateThreadStatusUpdater() {
@@ -121,11 +125,9 @@ static int LockOrUnlock(const std::string& fname, int fd, bool lock) {
     lockedFiles.erase(fname);
   }
   mutex_lockedFiles.Unlock();
-
-#ifdef NOHOST
+#if defined(NOHOST)
   /* TODO: lock/unlock support */
-#endif
-
+#endif // NOHOST
   return value;
 }
 
@@ -153,27 +155,27 @@ class PosixEnv : public Env {
     if (this != Env::Default()) {
       delete thread_status_updater_;
     }
-
+#if defined(NOHOST)
 	delete nohost; // NOHOST
+#endif // NOHOST
   }
 
   void SetFD_CLOEXEC(int fd, const EnvOptions* options) {
     if ((options == nullptr || options->set_fd_cloexec) && fd > 0) {
       fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
-#ifdef NOHOST
+#if defined(NOHOST)
 	  /* TODO: don't understand */
-#endif
+#endif // NOHOST
     }
   }
 
   virtual Status NewSequentialFile(const std::string& fname,
                                    unique_ptr<SequentialFile>* result,
                                    const EnvOptions& options) override {
-	/* NOHOST */
-	result->reset();
+    result->reset();
+#if defined(NOHOST)
 	if(!IsSstExtention(fname)){
-
-
+#endif // NOHOST
     FILE* f = nullptr;
     do {
       IOSTATS_TIMER_GUARD(open_nanos);
@@ -209,33 +211,30 @@ class PosixEnv : public Env {
       result->reset(new PosixSequentialFile(fname, f, options));
       return Status::OK();
     }
-
-
-
-
+#if defined(NOHOST)
 	}
 	else{
 		mutex_nohost.Lock();
-		int fd = nohost->Open(fname, 'r'); //NOHOST
+		int fd = nohost->Open(fname, 'r');
 		mutex_nohost.Unlock();
 		if (fd < -1) {
 			*result = nullptr;
 			return IOError(fname, errno);
 		} else {
-			result->reset(new NoHostSequentialFile(fname, fd, options, nohost)); //NOHOST
+			result->reset(new NoHostSequentialFile(fname, fd, options, nohost));
 			return Status::OK();
 		 }
 	}
+#endif //NOHOST
   }
 
   virtual Status NewRandomAccessFile(const std::string& fname,
                                      unique_ptr<RandomAccessFile>* result,
                                      const EnvOptions& options) override {
-	/* NOHOST */
-	result->reset();
+    result->reset();
+#if defined(NOHOST)
 	if(!IsSstExtention(fname)){
-
-
+#endif //NOHOST
     Status s;
     int fd;
     {
@@ -287,9 +286,8 @@ class PosixEnv : public Env {
       result->reset(new PosixRandomAccessFile(fname, fd, options));
     }
     return s;
-
-
-	} // endif sst
+#if defined(NOHOST)
+	}
 	else{
 		Status s;
 		int fd;
@@ -303,16 +301,16 @@ class PosixEnv : public Env {
 		}
 		return s;
 	}
+#endif //NOHOST
   }
 
   virtual Status NewWritableFile(const std::string& fname,
                                  unique_ptr<WritableFile>* result,
                                  const EnvOptions& options) override {
-	/* NOHOST */
-	result->reset();
-	if(!IsSstExtention(fname)){
-
     result->reset();
+#if defined(NOHOST)
+	if(!IsSstExtention(fname)){
+#endif //NOHOST
     Status s;
     int fd = -1;
     do {
@@ -366,7 +364,7 @@ class PosixEnv : public Env {
       }
     }
     return s;
-
+#if defined(NOHOST)
 	} // endif sst
 	else{
 		Status s;
@@ -390,15 +388,17 @@ class PosixEnv : public Env {
 		}
 		return s;
 	}
+#endif //NOHOST
   }
 
   virtual Status ReuseWritableFile(const std::string& fname,
                                    const std::string& old_fname,
                                    unique_ptr<WritableFile>* result,
                                    const EnvOptions& options) override {
-	result->reset();
+    result->reset();
+#if defined(NOHOST)
 	if(!IsSstExtention(fname)){
-
+#endif //NOHOST
     Status s;
     int fd = -1;
     do {
@@ -437,7 +437,7 @@ class PosixEnv : public Env {
 
     }
     return s;
-
+#if defined(NOHOST)
 	}
 	else{
 		Status s;
@@ -469,6 +469,7 @@ class PosixEnv : public Env {
 		}
 		return s;
 	}
+#endif
   }
 
   virtual Status NewDirectory(const std::string& name,
@@ -528,7 +529,7 @@ class PosixEnv : public Env {
     if (unlink(fname.c_str()) != 0) {
       result = IOError(fname, errno);
     }
-	/* NOHOST */
+#if defined(NOHOST)
 	if(IsSstExtention(fname)){
 		mutex_nohost.Lock();
 		if(nohost->DeleteFile(fname) != 0 ) {
@@ -536,6 +537,7 @@ class PosixEnv : public Env {
 		}
 		mutex_nohost.Unlock();
 	}
+#endif //NOHOST
     return result;
   };
 
@@ -571,8 +573,8 @@ class PosixEnv : public Env {
 
   virtual Status GetFileSize(const std::string& fname,
                              uint64_t* size) override {
-	/* NOHOST */
-	Status s;
+    Status s;
+#if defined(NOHOST)
 	if(IsSstExtention(fname)){
 		if((*size = nohost->GetFileSize(fname)) == (uint64_t)-1){
 			*size = 0;
@@ -580,6 +582,7 @@ class PosixEnv : public Env {
 		}
 		return s;
 	}
+#endif //NOHOST
     struct stat sbuf;
     if (stat(fname.c_str(), &sbuf) != 0) {
       *size = 0;
@@ -592,11 +595,12 @@ class PosixEnv : public Env {
 
   virtual Status GetFileModificationTime(const std::string& fname,
                                          uint64_t* file_mtime) override {
-	/* NOHOST */
+#if defined(NOHOST)
 	if(IsSstExtention(fname)){
 		*file_mtime = static_cast<uint64_t>(nohost->GetFileModificationTime(fname));
 	    return Status::OK();
 	}
+#endif //NOHOST
     struct stat s;
     if (stat(fname.c_str(), &s) !=0) {
       return IOError(fname, errno);
@@ -606,8 +610,8 @@ class PosixEnv : public Env {
   }
   virtual Status RenameFile(const std::string& src,
                             const std::string& target) override {
-	/* NOHOST */
-	Status result;
+    Status result;
+#if defined(NOHOST)
 	if(IsSstExtention(src)){
 		mutex_nohost.Lock();
 		if (nohost->Rename(src, target) != 0) {
@@ -619,6 +623,7 @@ class PosixEnv : public Env {
 		}
 		return result;
 	}
+#endif //NOHOST
     if (rename(src.c_str(), target.c_str()) != 0) {
       result = IOError(src, errno);
     }
@@ -628,8 +633,7 @@ class PosixEnv : public Env {
   virtual Status LinkFile(const std::string& src,
                           const std::string& target) override {
     Status result;
-
-	/* NOHOST */
+#if defined(NOHOST)
 	if(IsSstExtention(src)){
 		mutex_nohost.Lock();
 		if (nohost->Link(src, target) != 0) {
@@ -637,14 +641,13 @@ class PosixEnv : public Env {
 		}
 		mutex_nohost.Unlock();
 	}
-
+#endif //NOHOST
     if (link(src.c_str(), target.c_str()) != 0) {
       if (errno == EXDEV) {
         return Status::NotSupported("No cross FS links allowed");
       }
       result = IOError(src, errno);
     }
-
     return result;
   }
 
@@ -912,7 +915,9 @@ class PosixEnv : public Env {
   std::vector<ThreadPool> thread_pools_;
   pthread_mutex_t mu_;
   std::vector<pthread_t> threads_to_join_;
-  NoHostFs* nohost; // NOHOST
+#if defined(NOHOST)
+  NoHostFs* nohost;
+#endif //NOHOST
 };
 
 PosixEnv::PosixEnv()
@@ -928,7 +933,9 @@ PosixEnv::PosixEnv()
     thread_pools_[pool_id].SetHostEnv(this);
   }
   thread_status_updater_ = CreateThreadStatusUpdater();
+#if defined(NOHOST)
   nohost = new NoHostFs((1<<14)*8192); // NOHOST
+#endif
 }
 
 void PosixEnv::Schedule(void (*function)(void* arg1), void* arg, Priority pri,

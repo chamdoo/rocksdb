@@ -29,7 +29,7 @@ export EXTRA_CXXFLAGS+=" -march=armv7-a -mtune=cortex-a9 -mfpu=neon"
 
 #export EXTRA_LDFLAGS+=" -march=armv7-a -Wl,--fix-cortex-a8"
 export EXTRA_LDFLAGS+=" -march=armv7-a -mtune=cortex-a9 -mfpu=neon -Wl,--fix-cortex-a8"
-export EXTRA_LDFLAGS+=" -lstdc++ -lsupc++"
+#export EXTRA_LDFLAGS+=" -lstdc++ -lsupc++" # Not needed
 
 
 # Set TARGET_OS manually
@@ -49,6 +49,8 @@ export RANLIB="${HOST}-ranlib"
 export STRIP="${HOST}-strip"
 export OBJCOPY="${HOST}-objcopy"
 export OBJDUMP="${HOST}-objdump"
+
+export EXTRA_CXXFLAGS+=" -DNOHOST" # TO TURN ON NOHOST. Below (ENABLE_LIBFTL, ENABLE_FLASH_DB) works only if NOHOST is on
 
 export EXTRA_CXXFLAGS+=" -DENABLE_LIBFTL"
 #export EXTRA_CXXFLAGS+=" -DENABLE_FLASH_DB"

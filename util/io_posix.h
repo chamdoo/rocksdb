@@ -10,8 +10,11 @@
 #include <unistd.h>
 #include <atomic>
 #include "rocksdb/env.h"
-#include "port/port.h"
+
+#if defined(NOHOST)
+//#include "port/port.h"
 #include "nohost/nohost_fs.h"
+#endif //NOHOST
 
 // For non linux platform, the following macros are used only as place
 // holder.
@@ -227,6 +230,7 @@ class PosixDirectory : public Directory {
   int fd_;
 };
 
+#if defined(NOHOST)
 /* NOHOST */
 class NoHostSequentialFile : public SequentialFile {
  private:
@@ -301,6 +305,7 @@ class NoHostWritableFile : public WritableFile {
   virtual Status RangeSync(uint64_t offset, uint64_t nbytes) override;
   virtual size_t GetUniqueId(char* id, size_t max_size) const override;
 #endif
+#endif //NOHOST
 };
 
 }  // namespace rocksdb
