@@ -52,10 +52,11 @@ export OBJDUMP="${HOST}-objdump"
 
 export EXTRA_CXXFLAGS+=" -DNOHOST" # TO TURN ON NOHOST. Below (ENABLE_LIBFTL, ENABLE_FLASH_DB) works only if NOHOST is on
 
-export EXTRA_CXXFLAGS+=" -DENABLE_LIBFTL"
-#export EXTRA_CXXFLAGS+=" -DENABLE_FLASH_DB"
+#export EXTRA_CXXFLAGS+=" -DENABLE_LIBFTL"
+export EXTRA_CXXFLAGS+=" -DENABLE_FLASH_DB"
 #export EXTRA_CXXFLAGS+=" -DENABLE_READ_DEBUG"
 
 #PORTABLE=1 make shared_lib -j8
 #PORTABLE=1 make release -j8
-PORTABLE=1 make db_test -j8 V=1
+#PORTABLE=1 make db_test -j8 V=1
+PORTABLE=1 make db_bench -j8 V=1
