@@ -50,7 +50,7 @@ Node* GlobalFileTableTree::DirectoryTraverse(const std::string &path, bool isCre
 	return ret;
 }
 
-Node* GlobalFileTableTree::FindChild(Node* dir, std::string name){
+Node* GlobalFileTableTree::FindChild(Node* dir, const std::string &name){
 	Node* child = NULL;
 
 	if(dir->isfile)
@@ -97,7 +97,7 @@ Node* GlobalFileTableTree::CreateDir(const std::string &name){
 	return newdir;
 }
 
-Node* GlobalFileTableTree::CreateFile(std::string name) {
+Node* GlobalFileTableTree::CreateFile(const std::string &name) {
 	std::vector<std::string> path_list = split(name, '/');
 	if(path_list.size() == 0){
 //		std::cout <<"A file must have a name."<<std::endl;
@@ -123,9 +123,10 @@ Node* GlobalFileTableTree::CreateFile(std::string name) {
 	return newfile;
 }
 
-int GlobalFileTableTree::Link(std::string src, std::string target){
+int GlobalFileTableTree::Link(const std::string &src, const std::string &target){
 // On success, return 0
 // On failure, return -1 with errno
+// TODO: elaborate
 
 	std::vector<std::string> path_list = split(target, '/');
 	if(path_list.size() == 0){
@@ -135,13 +136,13 @@ int GlobalFileTableTree::Link(std::string src, std::string target){
 
 	std::string new_file_name = path_list.back();
 
-	Node* targetnode = GetNode(target);
+	Node* targetnode = DirectoryTraverse(target, false);
 	if(targetnode != NULL){
 		errno = EEXIST; // File already exists
 		return -1;
 	}
 
-	Node* srcnode = GetNode(src);
+	Node* srcnode = DirectoryTraverse(src, false);
 	if(srcnode == NULL){
 		errno = ENOENT; // No such file or directory
 		return -1;
@@ -230,7 +231,7 @@ bool GlobalFileTableTree::RecursiveRemoveDir(Node* cur){
 }
 
 
-int GlobalFileTableTree::DeleteFile(std::string name){
+int GlobalFileTableTree::DeleteFile(const std::string &name){
 // On success, return 0
 // On failure, return -1 with errno
 
@@ -288,7 +289,7 @@ int GlobalFileTableTree::DeleteFile(std::string name){
 	return -1;
 }
 
-int GlobalFileTableTree::Lock(std::string name, bool lock){
+int GlobalFileTableTree::Lock(const std::string &name, bool lock){
 	Node* node = NULL;
 	if( (node = DirectoryTraverse(name, false)) == NULL){
 		errno = ENOENT; // No such file or directory
@@ -302,7 +303,7 @@ int GlobalFileTableTree::Lock(std::string name, bool lock){
 	return 0;
 }
 
-Node* GlobalFileTableTree::GetNode(std::string name){
+Node* GlobalFileTableTree::GetNode(const std::string &name){
 	Node* node = NULL;
 	if( (node = DirectoryTraverse(name, false)) == NULL){
 		errno = ENOENT; // No such file or directory
