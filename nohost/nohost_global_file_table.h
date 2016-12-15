@@ -111,23 +111,25 @@ public:
         CreateDir("proc/sys/kernel");
         CreateDir("proc/sys/kernel/random");
         CreateFile("proc/sys/kernel/random/uuid");
+//		CreateDir("tmp/rocksdbtest-1001");
+//		CreateDir("tmp/rocksdbtest-1001/db_test");
 	}
 	~GlobalFileTableTree(){
 		delete free_page_bitmap;
 		RecursiveRemoveDir(root);
 	}
 
-	Node* CreateDir(std::string name);
+	Node* CreateDir(const std::string &name);
 	Node* CreateFile(std::string name);
 	int Link(std::string src, std::string target);
-	int DeleteDir(std::string name);
+	int DeleteDir(const std::string &name);
 	int DeleteFile(std::string name);
 	int Lock(std::string name, bool lock);
 
 	Node* GetNode(std::string name);
 	int FreeAllocatedPage(Node* node);
 	// go to the target directory. and return the target directory node.
-	Node* DirectoryTraverse(const std::string path, bool isCreate);
+	Node* DirectoryTraverse(const std::string &path, bool isCreate);
 	Node* FindChild(Node* dir, std::string name);
 	bool RecursiveRemoveDir(Node* cur);
 

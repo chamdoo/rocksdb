@@ -70,9 +70,9 @@ public:
 //	int Access(std::string name);
 //	Node* ReadDir(int fd);
 	int DeleteFile(std::string name);
-//	int DeleteDir(std::string name);
+	int DeleteDir(std::string name);
 //	int CreateFile(std::string name);
-//	int CreateDir(std::string name);
+	int CreateDir(std::string name);
 //	bool DirExists(std::string name);
 	uint64_t GetFileSize(std::string name);
 	time_t GetFileModificationTime(std::string name);
