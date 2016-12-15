@@ -305,7 +305,7 @@ class NoHostWritableFile : public WritableFile {
   virtual Status RangeSync(uint64_t offset, uint64_t nbytes) override;
   virtual size_t GetUniqueId(char* id, size_t max_size) const override;
 #endif
-#endif //NOHOST
 };
+#endif //NOHOST
 
 }  // namespace rocksdb
