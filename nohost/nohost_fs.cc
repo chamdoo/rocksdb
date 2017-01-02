@@ -135,7 +135,7 @@ int NoHostFs::Rename(std::string old_name, std::string name){
 	}
 
 	Node* new_node = global_file_tree->GetNode(name);
-	std::vector<std::string> path_list = split(name, '*');
+	std::vector<std::string> path_list = split(name, '/');
 	if(new_node == NULL){
 		*(old_node->name) = path_list.back();
 		return 0;
@@ -190,23 +190,23 @@ int NoHostFs::DeleteFile(std::string name){
 	return global_file_tree->DeleteFile(name);
 }
 
-//int NoHostFs::DeleteDir(std::string name){
-//	name = RecoverName(name);
-//#ifdef ENABLE_DEBUG
-//	printf("NoHostFs::DeleteDir::name:%s\n", name.c_str());
-//#endif
-//	return global_file_tree->DeleteDir(name);
-//}
-//
-//int NoHostFs::CreateDir(std::string name){
-//	name = RecoverName(name);
-//#ifdef ENABLE_DEBUG
-//	printf("Enter NoHostFs::CreateDir(%s)\n", name.c_str());
-//#endif
-//	if(global_file_tree->CreateDir(name) == NULL)
-//		return -1;
-//	return 0;
-//}
+int NoHostFs::DeleteDir(std::string name){
+	name = RecoverName(name);
+#ifdef ENABLE_DEBUG
+	printf("NoHostFs::DeleteDir::name:%s\n", name.c_str());
+#endif
+	return global_file_tree->DeleteDir(name);
+}
+
+int NoHostFs::CreateDir(std::string name){
+	name = RecoverName(name);
+#ifdef ENABLE_DEBUG
+	printf("Enter NoHostFs::CreateDir(%s)\n", name.c_str());
+#endif
+	if(global_file_tree->CreateDir(name) == NULL)
+		return -1;
+	return 0;
+}
 
 //int NoHostFs::CreateFile(std::string name){
 //	name = RecoverName(name);

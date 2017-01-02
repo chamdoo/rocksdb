@@ -53,6 +53,7 @@
 #include "util/thread_status_updater.h"
 
 #if defined(NOHOST)
+#include <iostream>
 //#include <sys/syscall.h>
 #endif
 
@@ -543,6 +544,14 @@ class PosixEnv : public Env {
 
   virtual Status CreateDir(const std::string& name) override {
     Status result;
+#if defined(NOHOST)
+	mutex_nohost.Lock();
+	if (nohost->CreateDir(name) != 0) {
+		result = IOError(name, errno);
+	}
+	mutex_nohost.Unlock();
+#endif
+
     if (mkdir(name.c_str(), 0755) != 0) {
       result = IOError(name, errno);
     }
@@ -551,6 +560,13 @@ class PosixEnv : public Env {
 
   virtual Status CreateDirIfMissing(const std::string& name) override {
     Status result;
+#if defined(NOHOST)
+	mutex_nohost.Lock();
+	if (nohost->CreateDir(name) != 0) {
+//		result = IOError(name, errno);
+	}
+	mutex_nohost.Unlock();
+#endif
     if (mkdir(name.c_str(), 0755) != 0) {
       if (errno != EEXIST) {
         result = IOError(name, errno);
@@ -565,6 +581,13 @@ class PosixEnv : public Env {
 
   virtual Status DeleteDir(const std::string& name) override {
     Status result;
+#if defined(NOHOST)
+	mutex_nohost.Lock();
+	if (nohost->DeleteDir(name) != 0) {
+		result = IOError(name, errno);
+	}
+	mutex_nohost.Unlock();
+#endif
     if (rmdir(name.c_str()) != 0) {
       result = IOError(name, errno);
     }

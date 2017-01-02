@@ -117,18 +117,18 @@ public:
 		RecursiveRemoveDir(root);
 	}
 
-	Node* CreateDir(std::string name);
-	Node* CreateFile(std::string name);
-	int Link(std::string src, std::string target);
-	int DeleteDir(std::string name);
-	int DeleteFile(std::string name);
-	int Lock(std::string name, bool lock);
+	Node* CreateDir(const std::string &name);
+	Node* CreateFile(const std::string &name);
+	int Link(const std::string &src, const std::string &target);
+	int DeleteDir(const std::string &name);
+	int DeleteFile(const std::string &name);
+	int Lock(const std::string &name, bool lock);
 
-	Node* GetNode(std::string name);
+	Node* GetNode(const std::string &name);
 	int FreeAllocatedPage(Node* node);
 	// go to the target directory. and return the target directory node.
-	Node* DirectoryTraverse(const std::string path, bool isCreate);
-	Node* FindChild(Node* dir, std::string name);
+	Node* DirectoryTraverse(const std::string &path, bool isCreate);
+	Node* FindChild(Node* dir, const std::string &name);
 	bool RecursiveRemoveDir(Node* cur);
 
 	bool print(Node* cur, std::string indent);
